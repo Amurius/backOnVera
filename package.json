@@ -1,0 +1,30 @@
+{
+  "name": "sondage-backend",
+  "version": "1.0.0",
+  "description": "Backend API pour application de sondages avec authentification JWT",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "express",
+    "jwt",
+    "postgresql",
+    "survey"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "openai": "^6.9.1",
+    "pg": "^8.16.3"
+  }
+}
