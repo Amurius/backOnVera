@@ -32,7 +32,6 @@ export const analyzeImage = async (req, res) => {
             url: `data:${req.file.mimetype};base64,${img64}`
           }
             }
-            }
           ]
         }
       ],
