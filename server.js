@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import authRoutes from './routes/authRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
@@ -12,10 +11,6 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
 
 app.use(cors());
 app.use(express.json());
