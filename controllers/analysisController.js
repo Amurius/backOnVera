@@ -94,7 +94,6 @@ export const analyzeVideo = async (req, res) => {
             url: `data:image/jpeg;base64,${img64}`
           }
         }))
-            }
           ]
         }
       ],
