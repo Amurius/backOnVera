@@ -14,11 +14,8 @@ export const analyzeImage = async (req, res) => {
     }
 
     const userId = req.userId;
-    const imagePath = req.file.path;
-
-    const imageBuffer = fs.readFileSync(imagePath);
-    const base64Image = imageBuffer.toString('base64');
-
+    const base64Image = req.file.buffer.toString("base64");
+    
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -27,28 +24,27 @@ export const analyzeImage = async (req, res) => {
           content: [
             {
               type: "text",
-              text: "Extraire tout le texte visible dans cette image et le retourner de manière structurée. Effectue une analyse OCR complète."
+              text: "Analyse cette image et le retourner de manière structurée la description. Effectue une analyse OCR complète."
             },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${req.file.mimetype};base64,${base64Image}`
-              }
+          {
+          type: "image_url",
+          image_url: {
+            url: `data:image/jpeg;base64,${img64}`
+          }
+            }
             }
           ]
         }
       ],
-      max_tokens: 2000
+      max_tokens: 5000
     });
 
     const extractedText = response.choices[0].message.content;
 
     await query(
-      'INSERT INTO ocr_analyses (user_id, image_url, extracted_text) VALUES ($1, $2, $3)',
-      [userId, req.file.filename, extractedText]
+      'INSERT INTO ocr_analyses (user_id, extracted_text) VALUES ($1, $2)',
+      [userId, extractedText]
     );
-
-    fs.unlinkSync(imagePath);
 
     res.json({
       message: 'Analyse OCR terminée',
@@ -70,28 +66,17 @@ export const analyzeVideo = async (req, res) => {
     }
 
     const userId = req.userId;
-    const videoPath = req.file.path;
-    const audioPath = path.join(path.dirname(videoPath), `audio-${Date.now()}.mp3`);
+    const framesBase64 = req.frames; // tableau de base64
+    const audioBase64 = req.audio;   // audio base64    
+    const imagesBase64 = framesBase64.map((frame) =>
+      frame.toString("base64")
+    );
 
-    const ffmpeg = (await import('fluent-ffmpeg')).default;
-
-    await new Promise((resolve, reject) => {
-      ffmpeg(videoPath)
-        .output(audioPath)
-        .audioCodec('libmp3lame')
-        .on('end', resolve)
-        .on('error', reject)
-        .run();
-    });
-
-    const audioTranscription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath),
-      model: "whisper-1",
-      language: "fr"
-    });
-
-    const videoBuffer = fs.readFileSync(videoPath);
-    const base64Video = videoBuffer.toString('base64');
+    //const audioTranscription = await openai.audio.transcriptions.create({
+    //  file: fs.createReadStream(audioPath),
+    //  model: "whisper-1",
+    //  language: "fr"
+    //});
 
     const videoAnalysis = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -101,29 +86,27 @@ export const analyzeVideo = async (req, res) => {
           content: [
             {
               type: "text",
-              text: "Analyse cette vidéo et décris ce que tu vois : les actions, les objets, les personnes, le contexte général. Fournis une description détaillée."
+              text: "Analyse cette vidéo frame par frame et décris ce que tu vois : les actions, les objets, les personnes, le contexte général. Fournis une description détaillée."
             },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${req.file.mimetype};base64,${base64Video}`
-              }
+            ...imagesBase64.map((img64) => ({
+          type: "image_url",
+          image_url: {
+            url: `data:image/jpeg;base64,${img64}`
+          }
+        }))
             }
           ]
         }
       ],
-      max_tokens: 2000
+      max_tokens: 50000
     });
 
     const videoDescription = videoAnalysis.choices[0].message.content;
 
-    await query(
-      'INSERT INTO video_analyses (user_id, video_url, audio_transcription, video_analysis) VALUES ($1, $2, $3, $4)',
-      [userId, req.file.filename, audioTranscription.text, videoDescription]
-    );
-
-    fs.unlinkSync(videoPath);
-    fs.unlinkSync(audioPath);
+    //await query(
+   //   'INSERT INTO video_analyses (user_id, video_url, audio_transcription, video_analysis) VALUES ($1, $2, $3, $4)',
+   //   [userId, req.file.filename, audioTranscription.text, videoDescription]
+   // );
 
     res.json({
       message: 'Analyse vidéo terminée',
