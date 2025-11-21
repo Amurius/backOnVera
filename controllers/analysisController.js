@@ -29,7 +29,7 @@ export const analyzeImage = async (req, res) => {
           {
           type: "image_url",
           image_url: {
-            url: `data:image/jpeg;base64,${img64}`
+            url: `data:${req.file.mimetype};base64,${img64}`
           }
             }
             }
