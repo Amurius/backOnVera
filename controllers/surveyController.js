@@ -13,6 +13,33 @@ export const getSurveys = async (req, res) => {
   }
 };
 
+export const getActiveSurvey = async (req, res) => {
+  try {
+    const surveyResult = await query(
+      'SELECT * FROM surveys WHERE is_active = true ORDER BY updated_at DESC LIMIT 1'
+    );
+
+    if (surveyResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Aucun sondage actif trouvé' });
+    }
+
+    const survey = surveyResult.rows[0];
+
+    const questionsResult = await query(
+      'SELECT * FROM questions WHERE survey_id = $1 ORDER BY order_index',
+      [survey.id]
+    );
+
+    res.json({
+      survey,
+      questions: questionsResult.rows
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération du sondage actif:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération du sondage actif' });
+  }
+};
+
 export const getSurveyById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -69,6 +96,48 @@ export const submitSurveyResponse = async (req, res) => {
     res.status(201).json({
       message: 'Réponse au sondage enregistrée avec succès',
       surveyResponseId: surveyResponse.id
+    });
+  } catch (error) {
+    console.error('Erreur lors de la soumission du sondage:', error);
+    res.status(500).json({ message: 'Erreur lors de la soumission du sondage' });
+  }
+};
+
+export const submitPublicSurveyResponse = async (req, res) => {
+  try {
+    const { surveyId, responses } = req.body;
+
+    if (!surveyId || !responses || responses.length === 0) {
+      return res.status(400).json({ message: 'ID du sondage et réponses requis' });
+    }
+
+    // Créer un utilisateur anonyme temporaire
+    const anonymousUserResult = await query(
+      'INSERT INTO users (email, password, first_name, last_name, role) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [`anonymous_${Date.now()}@vera.app`, 'anonymous', 'Anonyme', 'Utilisateur', 'anonymous']
+    );
+
+    const anonymousUser = anonymousUserResult.rows[0];
+
+    const surveyResponseResult = await query(
+      'INSERT INTO survey_responses (survey_id, user_id) VALUES ($1, $2) RETURNING *',
+      [surveyId, anonymousUser.id]
+    );
+
+    const surveyResponse = surveyResponseResult.rows[0];
+
+    const responsePromises = responses.map(r =>
+      query(
+        'INSERT INTO question_responses (survey_response_id, question_id, answer) VALUES ($1, $2, $3)',
+        [surveyResponse.id, r.questionId, r.answer]
+      )
+    );
+
+    await Promise.all(responsePromises);
+
+    res.status(201).json({
+      message: 'Réponse au sondage enregistrée avec succès',
+      success: true
     });
   } catch (error) {
     console.error('Erreur lors de la soumission du sondage:', error);

@@ -161,7 +161,7 @@ export const analyzeText = async (req, res) => {
       return res.status(400).json({ message: 'Texte requis' });
     }
 
-    const veraResponse = await fetch('https://www.askvera.org/api/v1/chat', {
+    const veraResponse = await fetch('https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat', {
       method: 'POST',
       headers: {
         'X-API-Key': process.env.VERA_API_KEY,
