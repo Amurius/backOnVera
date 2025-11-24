@@ -10,7 +10,7 @@ const openai = new OpenAI({
 export const analyzeImage = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'Aucune image fournie' });
+      return res.status(422).json({ message: 'Aucune image fournie' });
     }
 
     const userId = req.userId;

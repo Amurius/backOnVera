@@ -1,15 +1,30 @@
 import express from 'express';
-import path from 'path';
-import { analyzeImage, analyzeVideo, analyzeText, getOcrAnalyses, getVideoAnalyses } from '../controllers/analysisController.js';
-import { authMiddleware } from '../middlewares/auth.js';
+import { 
+  analyzeImage, 
+  analyzeVideo, 
+  analyzeText, 
+  getOcrAnalyses, 
+  getVideoAnalyses 
+} from '../controllers/analysisController.js';
+
+// 👇 CORRECTION IMPORTANTE : On utilise le bon nom 'verifyToken'
+import { verifyToken } from '../middlewares/auth.js';
+
 import upload from "../middlewares/upload.js";
 import { uploadAndProcessVideo } from "../middlewares/upload.js";
+
 const router = express.Router();
 
-router.post('/ocr', authMiddleware, upload.single('image'), analyzeImage);
-router.post('/video', authMiddleware, uploadAndProcessVideo, analyzeVideo);
-router.post('/text', authMiddleware, analyzeText);
-router.get('/ocr', authMiddleware, getOcrAnalyses);
-router.get('/video', authMiddleware, getVideoAnalyses);
+// Routes protégées par le Token + Upload Fichier
+router.post('/ocr', verifyToken, upload.single('image'), analyzeImage);
+
+// Pour la vidéo, on utilise ton middleware spécial de traitement
+router.post('/video', verifyToken, uploadAndProcessVideo, analyzeVideo);
+
+router.post('/text', verifyToken, analyzeText);
+
+// Historiques
+router.get('/ocr', verifyToken, getOcrAnalyses);
+router.get('/video', verifyToken, getVideoAnalyses);
 
 export default router;
