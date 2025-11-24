@@ -1,24 +1,52 @@
 import express from 'express';
 import { 
   getSurveys, 
+  getActiveSurvey,            // 🆕 (Artus)
   getSurveyById, 
   submitSurveyResponse, 
-  getSurveyResults 
+  submitPublicSurveyResponse, // 🆕 (Artus)
+  getSurveyResults,
+  createSurvey                // 🆕 (Ajouté dans le contrôleur précédent)
 } from '../controllers/surveyController.js';
 
-// 👇 CORRECTION ICI : On importe 'verifyToken' (plus 'authMiddleware')
-import { verifyToken } from '../middlewares/auth.js';
+// ✅ SÉCURITÉ : On utilise TON middleware corrigé
+import { verifyToken, isAdmin } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// Routes publiques (ou protégées selon ton choix)
+// ==========================================
+// 🔓 ROUTES PUBLIQUES
+// ==========================================
+
+// Liste de tous les sondages
 router.get('/', getSurveys);
+
+// Le sondage "À la une" (pour l'accueil)
+router.get('/active', getActiveSurvey);
+
+// Détails d'un sondage spécifique
 router.get('/:id', getSurveyById);
 
-// 👇 CORRECTION ICI AUSSI : On utilise 'verifyToken'
+// Répondre sans être connecté (Anonyme)
+router.post('/public-response', submitPublicSurveyResponse);
+
+
+// ==========================================
+// 🔒 ROUTES PROTÉGÉES (Utilisateur connecté)
+// ==========================================
+
+// Répondre en tant que membre
 router.post('/response', verifyToken, submitSurveyResponse);
 
-// Route protégée pour voir les résultats (optionnel)
+
+// ==========================================
+// 👑 ADMIN / MODO
+// ==========================================
+
+// Créer un nouveau sondage (On l'a codé, il faut la route !)
+router.post('/', verifyToken, createSurvey);
+
+// Voir les résultats
 router.get('/:id/results', verifyToken, getSurveyResults);
 
 export default router;

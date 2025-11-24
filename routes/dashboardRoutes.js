@@ -5,14 +5,12 @@ import {
   getMyResponses 
 } from '../controllers/dashboardController.js';
 
-// 👇 CORRECTION : On importe 'verifyToken' (le nouveau nom)
+// ✅ On utilise le bon middleware
 import { verifyToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// 🔒 SÉCURITÉ GLOBALE
-// Cette ligne dit : "Applique verifyToken à TOUTES les routes ci-dessous"
-// C'est très propre, ça évite de le répéter à chaque ligne.
+// 🔒 On protège toutes les routes ci-dessous
 router.use(verifyToken);
 
 router.get('/stats', getDashboardStats);

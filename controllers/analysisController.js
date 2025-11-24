@@ -7,6 +7,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+// ==========================================
+// 1. ANALYSE IMAGE (OCR)
+// ==========================================
 export const analyzeImage = async (req, res) => {
   try {
     if (!req.file) {
@@ -14,6 +17,7 @@ export const analyzeImage = async (req, res) => {
     }
 
     const userId = req.userId;
+    // CORRECTION BUG : On définit bien base64Image
     const base64Image = req.file.buffer.toString("base64");
     
     const response = await openai.chat.completions.create({
@@ -24,18 +28,19 @@ export const analyzeImage = async (req, res) => {
           content: [
             {
               type: "text",
-              text: "Analyse cette image et le retourner de manière structurée la description. Effectue une analyse OCR complète."
+              text: "Analyse cette image et retourne de manière structurée la description. Effectue une analyse OCR complète."
             },
-          {
-          type: "image_url",
-          image_url: {
-            url: `data:${req.file.mimetype};base64,${img64}`
-          }
+            {
+              type: "image_url",
+              image_url: {
+                // CORRECTION BUG : On utilise 'base64Image' au lieu de 'img64' qui n'existait pas
+                url: `data:${req.file.mimetype};base64,${base64Image}`
+              }
             }
           ]
         }
       ],
-      max_tokens: 5000
+      max_tokens: 1000
     });
 
     const extractedText = response.choices[0].message.content;
@@ -51,31 +56,28 @@ export const analyzeImage = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse OCR:', error);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    // CORRECTION : On ne supprime pas de fichier car on est en mémoire (buffer)
     res.status(500).json({ message: 'Erreur lors de l\'analyse OCR' });
   }
 };
 
+// ==========================================
+// 2. ANALYSE VIDÉO
+// ==========================================
 export const analyzeVideo = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'Aucune vidéo fournie' });
+    // On vérifie que le middleware a bien fait son travail
+    if (!req.frames || !req.audio) {
+      return res.status(422).json({ message: 'Erreur traitement vidéo (Frames manquantes)' });
     }
 
     const userId = req.userId;
-    const framesBase64 = req.frames; // tableau de base64
-    const audioBase64 = req.audio;   // audio base64    
-    const imagesBase64 = framesBase64.map((frame) =>
-      frame.toString("base64")
-    );
+    const framesBase64 = req.frames; 
+    
+    // On convertit les frames en chaînes base64 utilisables
+    const imagesBase64 = framesBase64.map((frame) => frame.toString("base64"));
 
-    //const audioTranscription = await openai.audio.transcriptions.create({
-    //  file: fs.createReadStream(audioPath),
-    //  model: "whisper-1",
-    //  language: "fr"
-    //});
+    // Note : L'audio est dispo dans req.audio si tu veux le transcrire avec Whisper ici
 
     const videoAnalysis = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -87,32 +89,37 @@ export const analyzeVideo = async (req, res) => {
               type: "text",
               text: "Analyse cette vidéo frame par frame et décris ce que tu vois : les actions, les objets, les personnes, le contexte général. Fournis une description détaillée."
             },
+            // On map correctement les images pour GPT-4 Vision
             ...imagesBase64.map((img64) => ({
-          type: "image_url",
-          image_url: {
-            url: `data:image/jpeg;base64,${img64}`
-          }
-        }))
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${img64}`
+              }
+            }))
           ]
         }
       ],
-      max_tokens: 50000
+      max_tokens: 4000
     });
 
     const videoDescription = videoAnalysis.choices[0].message.content;
 
-    //await query(
-   //   'INSERT INTO video_analyses (user_id, video_url, audio_transcription, video_analysis) VALUES ($1, $2, $3, $4)',
-   //   [userId, req.file.filename, audioTranscription.text, videoDescription]
-   // );
+    // TODO: Décommenter quand la table video_analyses sera prête et que Whisper sera activé
+    /*
+    await query(
+      'INSERT INTO video_analyses (user_id, video_url, video_analysis) VALUES ($1, $2, $3)',
+      [userId, "Video Uploaded", videoDescription]
+    );
+    */
 
     res.json({
       message: 'Analyse vidéo terminée',
-      audioTranscription: audioTranscription.text,
       videoAnalysis: videoDescription
     });
+
   } catch (error) {
     console.error('Erreur lors de l\'analyse vidéo:', error);
+    // Ici on peut nettoyer car la vidéo est sur le disque
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -120,55 +127,27 @@ export const analyzeVideo = async (req, res) => {
   }
 };
 
-export const getOcrAnalyses = async (req, res) => {
-  try {
-    const userId = req.userId;
-
-    const result = await query(
-      'SELECT * FROM ocr_analyses WHERE user_id = $1 ORDER BY created_at DESC',
-      [userId]
-    );
-
-    res.json({ analyses: result.rows });
-  } catch (error) {
-    console.error('Erreur lors de la récupération des analyses OCR:', error);
-    res.status(500).json({ message: 'Erreur lors de la récupération des analyses' });
-  }
-};
-
-export const getVideoAnalyses = async (req, res) => {
-  try {
-    const userId = req.userId;
-
-    const result = await query(
-      'SELECT * FROM video_analyses WHERE user_id = $1 ORDER BY created_at DESC',
-      [userId]
-    );
-
-    res.json({ analyses: result.rows });
-  } catch (error) {
-    console.error('Erreur lors de la récupération des analyses vidéo:', error);
-    res.status(500).json({ message: 'Erreur lors de la récupération des analyses' });
-  }
-};
-
+// ==========================================
+// 3. ANALYSE TEXTE (API VERA)
+// ==========================================
 export const analyzeText = async (req, res) => {
   try {
     const { text } = req.body;
     const userId = req.userId;
 
     if (!text) {
-      return res.status(400).json({ message: 'Texte requis' });
+      return res.status(422).json({ message: 'Texte requis' });
     }
 
-    const veraResponse = await fetch('https://www.askvera.org/api/v1/chat', {
+    // FUSION : On garde l'URL spécifique d'Artus qui semble être la bonne pour le partenaire
+    const veraResponse = await fetch('https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat', {
       method: 'POST',
       headers: {
         'X-API-Key': process.env.VERA_API_KEY,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        userId: userId,
+        userId: userId, // On passe l'ID utilisateur
         query: text
       })
     });
@@ -187,5 +166,36 @@ export const analyzeText = async (req, res) => {
   } catch (error) {
     console.error('Erreur lors de l\'analyse de texte:', error);
     res.status(500).json({ message: 'Erreur lors de l\'analyse de texte' });
+  }
+};
+
+// ==========================================
+// 4. HISTORIQUES
+// ==========================================
+export const getOcrAnalyses = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const result = await query(
+      'SELECT * FROM ocr_analyses WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ analyses: result.rows });
+  } catch (error) {
+    console.error('Erreur hist OCR:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des analyses' });
+  }
+};
+
+export const getVideoAnalyses = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const result = await query(
+      'SELECT * FROM video_analyses WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ analyses: result.rows });
+  } catch (error) {
+    console.error('Erreur hist Vidéo:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des analyses' });
   }
 };

@@ -1,16 +1,20 @@
 import jwt from 'jsonwebtoken';
 import { query } from '../db/config.js'; // Nécessaire pour vérifier le rôle en BDD
 
-// 1. GÉNÉRATION DU TOKEN (Mise à jour avec le rôle)
+// ==========================================
+// 1. GÉNÉRATION DU TOKEN
+// ==========================================
 export const generateToken = (userId, email, role) => {
   return jwt.sign(
-    { userId, email, role }, // On ajoute le rôle dans le "Payload"
+    { userId, email, role }, // On inclut le rôle pour que le Front sache qui est connecté
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
   );
 };
 
-// 2. VÉRIFICATION DU TOKEN (Renommé pour coller aux routes)
+// ==========================================
+// 2. VÉRIFICATION DU TOKEN (Standard)
+// ==========================================
 export const verifyToken = (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -21,10 +25,10 @@ export const verifyToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // On attache les infos à la requête pour la suite
+    // On injecte les infos dans la requête pour les contrôleurs suivants
     req.userId = decoded.userId;
     req.userEmail = decoded.email;
-    req.userRole = decoded.role; // On récupère le rôle du token
+    req.userRole = decoded.role; 
 
     next();
   } catch (error) {
@@ -32,12 +36,13 @@ export const verifyToken = (req, res, next) => {
   }
 };
 
-// 3. VÉRIFICATION ADMIN (Nouveau !)
-// Ce middleware s'exécute APRÈS verifyToken
+// ==========================================
+// 3. VÉRIFICATION ADMIN (Sécurité Max)
+// ==========================================
 export const isAdmin = async (req, res, next) => {
   try {
-    // Double sécurité : On vérifie en BDD que l'utilisateur est TOUJOURS admin
-    // (Au cas où on lui aurait retiré ses droits entre temps)
+    // On vérifie en base de données que l'utilisateur est bien Admin
+    // (C'est plus sûr que de faire confiance au token seul)
     const result = await query('SELECT role FROM users WHERE id = $1', [req.userId]);
 
     if (result.rows.length === 0) {
@@ -47,11 +52,9 @@ export const isAdmin = async (req, res, next) => {
     const userRole = result.rows[0].role;
 
     if (userRole !== 'admin') {
-      // 403 = Forbidden (Interdit)
       return res.status(403).json({ message: "Accès refusé : Réservé aux Administrateurs." });
     }
 
-    // C'est un admin, on laisse passer vers le contrôleur
     next(); 
   } catch (error) {
     console.error("Erreur middleware Admin:", error);

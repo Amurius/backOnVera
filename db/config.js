@@ -5,13 +5,13 @@ dotenv.config();
 
 const { Pool } = pg;
 
-// Vérification de sécurité
+// Vérification de sécurité pour éviter les crashs silencieux
 if (!process.env.DATABASE_URL) {
   console.error("🔴 ERREUR : La variable DATABASE_URL est manquante dans le .env");
 }
 
 const pool = new Pool({
-  // 1. On utilise l'URL complète de Neon
+  // 1. On utilise l'URL complète de Neon (plus simple et plus sûr)
   connectionString: process.env.DATABASE_URL,
   
   // 2. INDISPENSABLE POUR NEON : On active le SSL
@@ -19,10 +19,10 @@ const pool = new Pool({
     rejectUnauthorized: false 
   },
 
-  // Options de performance (tu peux garder tes anciens réglages)
+  // Options de performance
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000, // J'ai augmenté un peu pour le Cloud
+  connectionTimeoutMillis: 10000, 
 });
 
 pool.on('error', (err) => {
@@ -30,7 +30,7 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
-// Petit log au démarrage pour être sûr
+// Petit log au démarrage pour confirmer que tout va bien
 console.log("🔌 Tentative de connexion à la BDD (SSL activé)...");
 
 export const query = async (text, params) => {
@@ -38,7 +38,7 @@ export const query = async (text, params) => {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    // On garde ton log de performance, c'est très bien !
+    // On garde le log de performance, c'est utile pour le debug
     console.log('✅ Requête exécutée', { text, duration, rows: res.rowCount });
     return res;
   } catch (error) {
