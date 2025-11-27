@@ -48,9 +48,7 @@ export const checkImage = async (req, res) => {
       return res.status(400).json({ message: 'Aucune image fournie' });
     }
 
-    const imagePath = req.file.path;
-    const imageBuffer = fs.readFileSync(imagePath);
-    const base64Image = imageBuffer.toString('base64');
+    const base64Image = req.file.buffer.toString('base64');
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -80,8 +78,6 @@ export const checkImage = async (req, res) => {
 
     const analysis = response.choices[0].message.content;
 
-    fs.unlinkSync(imagePath);
-
     res.json({
       success: true,
       analysis,
@@ -89,9 +85,6 @@ export const checkImage = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse de l\'image:', error);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     res.status(500).json({ message: 'Erreur lors de l\'analyse de l\'image' });
   }
 };

@@ -209,14 +209,121 @@ export const updateUser = async (req, res) => {
   }
 };
 
-// (Fonction d'Artus : Supprimer son compte)
+export const logout = async (req, res) => {
+  try {
+    res.json({
+      message: 'Déconnexion réussie',
+      success: true
+    });
+  } catch (error) {
+    console.error('Erreur lors de la déconnexion:', error);
+    res.status(500).json({ message: 'Erreur lors de la déconnexion' });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role } = req.body;
+    const userId = req.userId;
+
+    if (email) {
+      const existingUser = await query(
+        'SELECT * FROM users WHERE email = $1 AND id != $2',
+        [email, userId]
+      );
+
+      if (existingUser.rows.length > 0) {
+        return res.status(409).json({ message: 'Cet email est déjà utilisé' });
+      }
+    }
+
+    let updateFields = [];
+    let updateValues = [];
+    let paramCounter = 1;
+
+    if (email) {
+      updateFields.push(`email = $${paramCounter}`);
+      updateValues.push(email);
+      paramCounter++;
+    }
+
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateFields.push(`password = $${paramCounter}`);
+      updateValues.push(hashedPassword);
+      paramCounter++;
+    }
+
+    if (firstName !== undefined) {
+      updateFields.push(`first_name = $${paramCounter}`);
+      updateValues.push(firstName);
+      paramCounter++;
+    }
+
+    if (lastName !== undefined) {
+      updateFields.push(`last_name = $${paramCounter}`);
+      updateValues.push(lastName);
+      paramCounter++;
+    }
+
+    if (role) {
+      updateFields.push(`role = $${paramCounter}`);
+      updateValues.push(role);
+      paramCounter++;
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ message: 'Aucune donnée à mettre à jour' });
+    }
+
+    updateValues.push(userId);
+
+    const result = await query(
+      `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${paramCounter} RETURNING id, email, first_name, last_name, role, created_at`,
+      updateValues
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    }
+
+    const user = result.rows[0];
+    res.json({
+      message: 'Profil mis à jour avec succès',
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        createdAt: user.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour du profil:', error);
+    res.status(500).json({ message: 'Erreur lors de la mise à jour du profil' });
+  }
+};
+
 export const deleteUser = async (req, res) => {
   try {
-    const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [req.userId]);
-    if (result.rows.length === 0) return res.status(404).json({ message: 'Introuvable' });
-    res.json({ message: 'Compte supprimé', success: true });
+    const userId = req.userId;
+
+    const result = await query(
+      'DELETE FROM users WHERE id = $1 RETURNING id',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    }
+
+    res.json({
+      message: 'Compte supprimé avec succès',
+      success: true
+    });
   } catch (error) {
-    console.error('Erreur delete:', error);
-    res.status(500).json({ message: 'Erreur suppression compte' });
+    console.error('Erreur lors de la suppression du compte:', error);
+    res.status(500).json({ message: 'Erreur lors de la suppression du compte' });
   }
 };

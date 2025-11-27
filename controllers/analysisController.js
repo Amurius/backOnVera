@@ -1,7 +1,5 @@
 import OpenAI from 'openai';
 import { query } from '../db/config.js';
-import fs from 'fs';
-import path from 'path';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -30,10 +28,10 @@ export const analyzeImage = async (req, res) => {
               type: "text",
               text: "Analyse cette image et retourne de manière structurée la description. Effectue une analyse OCR complète."
             },
+
             {
               type: "image_url",
               image_url: {
-                // CORRECTION BUG : On utilise 'base64Image' au lieu de 'img64' qui n'existait pas
                 url: `data:${req.file.mimetype};base64,${base64Image}`
               }
             }
@@ -56,7 +54,6 @@ export const analyzeImage = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse OCR:', error);
-    // CORRECTION : On ne supprime pas de fichier car on est en mémoire (buffer)
     res.status(500).json({ message: 'Erreur lors de l\'analyse OCR' });
   }
 };
@@ -119,7 +116,7 @@ export const analyzeVideo = async (req, res) => {
 
   } catch (error) {
     console.error('Erreur lors de l\'analyse vidéo:', error);
-    // Ici on peut nettoyer car la vidéo est sur le disque
+
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -139,7 +136,6 @@ export const analyzeText = async (req, res) => {
       return res.status(422).json({ message: 'Texte requis' });
     }
 
-    // FUSION : On garde l'URL spécifique d'Artus qui semble être la bonne pour le partenaire
     const veraResponse = await fetch('https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat', {
       method: 'POST',
       headers: {
@@ -156,11 +152,10 @@ export const analyzeText = async (req, res) => {
       throw new Error(`Erreur API Vera: ${veraResponse.status}`);
     }
 
-    const veraAnalysis = await veraResponse.json();
+    const veraAnalysis = await veraResponse.text();
 
     res.json({
       message: 'Analyse de texte terminée',
-      query: text,
       veraAnalysis
     });
   } catch (error) {

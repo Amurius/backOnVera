@@ -173,9 +173,48 @@ export const submitPublicSurveyResponse = async (req, res) => {
   }
 };
 
-// ==========================================
-// 7. RÉSULTATS
-// ==========================================
+export const submitPublicSurveyResponse = async (req, res) => {
+  try {
+    const { surveyId, responses } = req.body;
+
+    if (!surveyId || !responses || responses.length === 0) {
+      return res.status(400).json({ message: 'ID du sondage et réponses requis' });
+    }
+
+    // Créer un utilisateur anonyme temporaire
+    const anonymousUserResult = await query(
+      'INSERT INTO users (email, password, first_name, last_name, role) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [`anonymous_${Date.now()}@vera.app`, 'anonymous', 'Anonyme', 'Utilisateur', 'anonymous']
+    );
+
+    const anonymousUser = anonymousUserResult.rows[0];
+
+    const surveyResponseResult = await query(
+      'INSERT INTO survey_responses (survey_id, user_id) VALUES ($1, $2) RETURNING *',
+      [surveyId, anonymousUser.id]
+    );
+
+    const surveyResponse = surveyResponseResult.rows[0];
+
+    const responsePromises = responses.map(r =>
+      query(
+        'INSERT INTO question_responses (survey_response_id, question_id, answer) VALUES ($1, $2, $3)',
+        [surveyResponse.id, r.questionId, r.answer]
+      )
+    );
+
+    await Promise.all(responsePromises);
+
+    res.status(201).json({
+      message: 'Réponse au sondage enregistrée avec succès',
+      success: true
+    });
+  } catch (error) {
+    console.error('Erreur lors de la soumission du sondage:', error);
+    res.status(500).json({ message: 'Erreur lors de la soumission du sondage' });
+  }
+};
+
 export const getSurveyResults = async (req, res) => {
   try {
     const { id } = req.params;
