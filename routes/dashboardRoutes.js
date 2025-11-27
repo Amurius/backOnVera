@@ -1,10 +1,17 @@
 import express from 'express';
-import { getDashboardStats, getMySurveys, getMyResponses } from '../controllers/dashboardController.js';
-import { authMiddleware } from '../middlewares/auth.js';
+import { 
+  getDashboardStats, 
+  getMySurveys, 
+  getMyResponses 
+} from '../controllers/dashboardController.js';
+
+// ✅ On utilise le bon middleware
+import { verifyToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.use(authMiddleware);
+// 🔒 On protège toutes les routes ci-dessous
+router.use(verifyToken);
 
 router.get('/stats', getDashboardStats);
 router.get('/my-surveys', getMySurveys);

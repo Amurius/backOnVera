@@ -1,16 +1,21 @@
 import express from 'express';
-import multer from 'multer';
 import { checkText, checkImage, checkVideo } from '../controllers/factCheckController.js';
+
+// 1. SÉCURITÉ : On protège ces routes avec ton Token
+import { verifyToken } from '../middlewares/auth.js';
+
+// 2. UPLOAD : On réutilise ton middleware centralisé (plus propre)
+import upload from '../middlewares/upload.js';
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }
-});
+// Route Texte (Protégée)
+router.post('/text', verifyToken, checkText);
 
-router.post('/text', checkText);
-router.post('/image', upload.single('image'), checkImage);
-router.post('/video', upload.single('video'), checkVideo);
+// Route Image (Protégée + Upload)
+router.post('/image', verifyToken, upload.single('image'), checkImage);
+
+// Route Vidéo (Protégée + Upload)
+router.post('/video', verifyToken, upload.single('video'), checkVideo);
 
 export default router;

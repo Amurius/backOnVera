@@ -4,8 +4,8 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
-import analysisRoutes from './routes/analysisRoutes.js';
-import factCheckRoutes from './routes/factCheckRoutes.js';
+import factCheckRoutes from './routes/analysisRoutes.js';
+//import factCheckRoutes from './routes/factCheckRoutes.js';
 
 dotenv.config();
 
@@ -23,8 +23,9 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/analysis', analysisRoutes);
 app.use('/api/fact-check', factCheckRoutes);
+//Doublon avec openAI 
+//app.use('/api/fact-check', factCheckRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

@@ -4,10 +4,12 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
+// On stocke en RAM (Mémoire) pour être rapide et ne pas encombrer le disque
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * Middleware pour extraire frames et audio depuis un buffer vidéo
+ * C'est lui qui fait le travail difficile AVANT le contrôleur
  */
 export const videoProcessingMiddleware = async (req, res, next) => {
   if (!req.file) {
@@ -61,8 +63,8 @@ const extractFramesFromFile = (videoPath, fps = 1) => {
 
     ffmpeg.stdout.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
-      let start = buffer.indexOf(Buffer.from([0xff, 0xd8])); // SOI
-      let end = buffer.indexOf(Buffer.from([0xff, 0xd9]));   // EOI
+      let start = buffer.indexOf(Buffer.from([0xff, 0xd8])); // Début JPEG
+      let end = buffer.indexOf(Buffer.from([0xff, 0xd9]));   // Fin JPEG
 
       while (start !== -1 && end !== -1 && end > start) {
         const frame = buffer.slice(start, end + 2);
@@ -106,5 +108,7 @@ const extractAudioFromFile = (videoPath) => {
   });
 };
 
+// Export combiné pour les routes : Upload + Traitement
 export const uploadAndProcessVideo = [upload.single("video"), videoProcessingMiddleware];
+
 export default upload;

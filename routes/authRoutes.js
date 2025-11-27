@@ -1,14 +1,57 @@
 import express from 'express';
-import { register, login, getProfile, logout, updateUser, deleteUser } from '../controllers/authController.js';
-import { authMiddleware } from '../middlewares/auth.js';
+// 1. On importe TOUTES les fonctions (Amina + Artus)
+import { 
+  register, 
+  login, 
+  getProfile, 
+  inviteModo, 
+  acceptInvitation, 
+  logout,      // 🆕 Artus
+  updateUser,  // 🆕 Artus
+  deleteUser   // 🆕 Artus
+} from '../controllers/authController.js';
+
+// 2. On utilise tes middlewares sécurisés (Amina)
+import { verifyToken, isAdmin } from '../middlewares/auth.js';
 
 const router = express.Router();
 
+// ==========================================
+// 🔓 ROUTES PUBLIQUES
+// ==========================================
+
+// Setup Admin (Protégé par code secret)
 router.post('/register', register);
+
+// Connexion
 router.post('/login', login);
-router.post('/logout', authMiddleware, logout);
-router.get('/profile', authMiddleware, getProfile);
-router.put('/profile', authMiddleware, updateUser);
-router.delete('/profile', authMiddleware, deleteUser);
+
+// Activation compte Modo
+router.post('/accept-invite', acceptInvitation);
+
+
+// ==========================================
+// 🔒 ROUTES PROTÉGÉES (Utilisateur connecté)
+// ==========================================
+
+// Voir son profil
+router.get('/profile', verifyToken, getProfile);
+
+// 🆕 Se déconnecter (Juste un message côté serveur)
+router.post('/logout', verifyToken, logout);
+
+// 🆕 Mettre à jour son profil (Nom, Email, Password)
+router.put('/update', verifyToken, updateUser);
+
+// 🆕 Supprimer son compte
+router.delete('/delete', verifyToken, deleteUser);
+
+
+// ==========================================
+// 👑 ADMIN ONLY
+// ==========================================
+
+// Inviter un modérateur
+router.post('/invite', verifyToken, isAdmin, inviteModo);
 
 export default router;
