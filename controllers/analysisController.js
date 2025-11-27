@@ -1,7 +1,5 @@
 import OpenAI from 'openai';
 import { query } from '../db/config.js';
-import fs from 'fs';
-import path from 'path';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -21,26 +19,26 @@ export const analyzeImage = async (req, res) => {
     const base64Image = req.file.buffer.toString("base64");
     
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1-mini",
       messages: [
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Analyse cette image et retourne de manière structurée la description. Effectue une analyse OCR complète."
+              text: "Extrais toutes les informations et affirmations factuelles presentes. Retourne uniquement ces informations sous forme de liste ou de texte, sans introduction ni commentaire. Ne mentionne jamais qu'il s'agit d'une image."
             },
+
             {
               type: "image_url",
               image_url: {
-                // CORRECTION BUG : On utilise 'base64Image' au lieu de 'img64' qui n'existait pas
                 url: `data:${req.file.mimetype};base64,${base64Image}`
               }
             }
           ]
         }
       ],
-      max_tokens: 1000
+      max_tokens: 5000
     });
 
     const extractedText = response.choices[0].message.content;
@@ -56,7 +54,6 @@ export const analyzeImage = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse OCR:', error);
-    // CORRECTION : On ne supprime pas de fichier car on est en mémoire (buffer)
     res.status(500).json({ message: 'Erreur lors de l\'analyse OCR' });
   }
 };
@@ -80,14 +77,14 @@ export const analyzeVideo = async (req, res) => {
     // Note : L'audio est dispo dans req.audio si tu veux le transcrire avec Whisper ici
 
     const videoAnalysis = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.1",
       messages: [
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Analyse cette vidéo frame par frame et décris ce que tu vois : les actions, les objets, les personnes, le contexte général. Fournis une description détaillée."
+              text: "Extrais toutes les informations et affirmations factuelles presentes. Decris les actions, les objets, les personnes et le contexte. Retourne uniquement ces informations sans introduction ni commentaire. Ne mentionne jamais qu'il s'agit d'une video, d'images ou de frames."
             },
             // On map correctement les images pour GPT-4 Vision
             ...imagesBase64.map((img64) => ({
@@ -99,7 +96,7 @@ export const analyzeVideo = async (req, res) => {
           ]
         }
       ],
-      max_tokens: 4000
+      max_tokens: 100000
     });
 
     const videoDescription = videoAnalysis.choices[0].message.content;
@@ -119,7 +116,7 @@ export const analyzeVideo = async (req, res) => {
 
   } catch (error) {
     console.error('Erreur lors de l\'analyse vidéo:', error);
-    // Ici on peut nettoyer car la vidéo est sur le disque
+
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -139,7 +136,6 @@ export const analyzeText = async (req, res) => {
       return res.status(422).json({ message: 'Texte requis' });
     }
 
-    // FUSION : On garde l'URL spécifique d'Artus qui semble être la bonne pour le partenaire
     const veraResponse = await fetch('https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat', {
       method: 'POST',
       headers: {
@@ -156,11 +152,10 @@ export const analyzeText = async (req, res) => {
       throw new Error(`Erreur API Vera: ${veraResponse.status}`);
     }
 
-    const veraAnalysis = await veraResponse.json();
+    const veraAnalysis = await veraResponse.text();
 
     res.json({
       message: 'Analyse de texte terminée',
-      query: text,
       veraAnalysis
     });
   } catch (error) {

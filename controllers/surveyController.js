@@ -144,13 +144,8 @@ export const submitPublicSurveyResponse = async (req, res) => {
     const { surveyId, responses } = req.body;
     if (!surveyId || !responses) return res.status(422).json({ message: "Données manquantes" });
 
-    // Création user anonyme à la volée
-    const fakeEmail = `anon_${Date.now()}_${Math.floor(Math.random()*1000)}@vera.app`;
     const userResult = await query(
-      `INSERT INTO users (email, first_name, last_name, role) 
-       VALUES ($1, 'Anonyme', 'Public', 'anonymous') 
-       RETURNING id`,
-      [fakeEmail]
+      `SELECT id from user where email = 'anonyme@anonyme.com'`
     );
     const anonId = userResult.rows[0].id;
 
@@ -173,9 +168,7 @@ export const submitPublicSurveyResponse = async (req, res) => {
   }
 };
 
-// ==========================================
-// 7. RÉSULTATS
-// ==========================================
+
 export const getSurveyResults = async (req, res) => {
   try {
     const { id } = req.params;
