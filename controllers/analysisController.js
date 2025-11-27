@@ -64,7 +64,7 @@ export const analyzeVideo = async (req, res) => {
       return res.status(422).json({ message: 'Erreur traitement vidéo (Frames manquantes)' });
     }
 
-    const userId = req.userId;
+    const userId = req.userId ?? "anonyme";
     const framesBase64 = req.frames;
 
     // On convertit les frames en chaînes base64 utilisables
