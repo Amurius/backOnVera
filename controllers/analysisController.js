@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import crypto from 'crypto';
 import { query } from '../db/config.js';
 
 const openai = new OpenAI({
@@ -14,7 +15,7 @@ export const analyzeImage = async (req, res) => {
       return res.status(422).json({ message: 'Aucune image fournie' });
     }
 
-    const userId = req.userId;
+    const userId = req.userId ?? crypto.randomUUID();
     // CORRECTION BUG : On définit bien base64Image
     const base64Image = req.file.buffer.toString("base64");
     
@@ -64,7 +65,7 @@ export const analyzeVideo = async (req, res) => {
       return res.status(422).json({ message: 'Erreur traitement vidéo (Frames manquantes)' });
     }
 
-    const userId = req.userId ?? "anonyme";
+    const userId = req.userId ?? crypto.randomUUID();
     const framesBase64 = req.frames;
 
     // On convertit les frames en chaînes base64 utilisables
@@ -126,7 +127,7 @@ export const analyzeVideo = async (req, res) => {
 export const analyzeText = async (req, res) => {
   try {
     const { text } = req.body;
-    const userId = req.userId ?? "anonyme";
+    const userId = req.userId ?? crypto.randomUUID();
 
     if (!text) {
       return res.status(422).json({ message: 'Texte requis' });
