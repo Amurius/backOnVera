@@ -1,5 +1,8 @@
 import multer from "multer";
 import { spawn } from "child_process";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -12,38 +15,46 @@ export const videoProcessingMiddleware = async (req, res, next) => {
   }
 
   const videoBuffer = req.file.buffer;
+  const tempVideoPath = path.join(os.tmpdir(), `video-${Date.now()}.mp4`);
 
   try {
+    // Ecrire le buffer dans un fichier temporaire
+    fs.writeFileSync(tempVideoPath, videoBuffer);
+
     // Extraction frames
-    const frames = await extractFramesFromBuffer(videoBuffer, 1); // 1 frame/sec
+    const frames = await extractFramesFromFile(tempVideoPath, 1);
     req.frames = frames.map(f => f.toString("base64"));
 
     // Extraction audio
-    const audio = await extractAudioFromBuffer(videoBuffer);
+    const audio = await extractAudioFromFile(tempVideoPath);
     req.audio = audio.toString("base64");
+
+    // Supprimer le fichier temporaire
+    fs.unlinkSync(tempVideoPath);
 
     next();
   } catch (err) {
+    // Nettoyer en cas d'erreur
+    if (fs.existsSync(tempVideoPath)) {
+      fs.unlinkSync(tempVideoPath);
+    }
     console.error("Erreur processing vidéo:", err);
     res.status(500).json({ message: "Erreur lors du traitement de la vidéo" });
   }
 };
 
 /**
- * Extrait des frames JPEG depuis un buffer vidéo
+ * Extrait des frames JPEG depuis un fichier vidéo
  */
-const extractFramesFromBuffer = (videoBuffer, fps = 1) => {
+const extractFramesFromFile = (videoPath, fps = 1) => {
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn("ffmpeg", [
-      "-i", "pipe:0",
+      "-i", videoPath,
       "-vf", `fps=${fps}`,
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
       "pipe:1"
     ]);
-
-    ffmpeg.stdin.write(videoBuffer);
-    ffmpeg.stdin.end();
 
     const frames = [];
     let buffer = Buffer.alloc(0);
@@ -62,35 +73,35 @@ const extractFramesFromBuffer = (videoBuffer, fps = 1) => {
       }
     });
 
+    ffmpeg.stderr.on("data", () => {}); // Ignorer stderr
+
     ffmpeg.on("close", (code) => {
       if (code === 0) resolve(frames);
-      else reject(new Error(`FFmpeg exited with code ${code}`));
+      else reject(new Error(`FFmpeg frames exited with code ${code}`));
     });
   });
 };
 
 /**
- * Extrait l'audio WAV depuis un buffer vidéo
+ * Extrait l'audio WAV depuis un fichier vidéo
  */
-const extractAudioFromBuffer = (videoBuffer) => {
+const extractAudioFromFile = (videoPath) => {
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn("ffmpeg", [
-      "-i", "pipe:0",
-      "-vn",               // pas de vidéo
-      "-f", "wav",         // format WAV
-      "-ar", "16000",      // sample rate 16kHz (optionnel)
+      "-i", videoPath,
+      "-vn",
+      "-f", "wav",
+      "-ar", "16000",
       "pipe:1"
     ]);
 
-    ffmpeg.stdin.write(videoBuffer);
-    ffmpeg.stdin.end();
-
     const chunks = [];
     ffmpeg.stdout.on("data", chunk => chunks.push(chunk));
+    ffmpeg.stderr.on("data", () => {}); // Ignorer stderr
 
     ffmpeg.on("close", code => {
       if (code === 0) resolve(Buffer.concat(chunks));
-      else reject(new Error(`FFmpeg exited with code ${code}`));
+      else reject(new Error(`FFmpeg audio exited with code ${code}`));
     });
   });
 };

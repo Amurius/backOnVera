@@ -1,7 +1,5 @@
 import OpenAI from 'openai';
 import { query } from '../db/config.js';
-import fs from 'fs';
-import path from 'path';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -29,7 +27,7 @@ export const analyzeImage = async (req, res) => {
           {
           type: "image_url",
           image_url: {
-            url: `data:${req.file.mimetype};base64,${img64}`
+            url: `data:${req.file.mimetype};base64,${base64Image}`
           }
             }
           ]
@@ -51,9 +49,6 @@ export const analyzeImage = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse OCR:', error);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     res.status(500).json({ message: 'Erreur lors de l\'analyse OCR' });
   }
 };
@@ -113,9 +108,6 @@ export const analyzeVideo = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse vidéo:', error);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     res.status(500).json({ message: 'Erreur lors de l\'analyse vidéo' });
   }
 };
@@ -177,11 +169,10 @@ export const analyzeText = async (req, res) => {
       throw new Error(`Erreur API Vera: ${veraResponse.status}`);
     }
 
-    const veraAnalysis = await veraResponse.json();
+    const veraAnalysis = await veraResponse.text();
 
     res.json({
       message: 'Analyse de texte terminée',
-      query: text,
       veraAnalysis
     });
   } catch (error) {
