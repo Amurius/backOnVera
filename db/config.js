@@ -3,8 +3,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const { Pool } = pg;
-
 // Vérification de sécurité pour éviter les crashs silencieux
 if (!process.env.DATABASE_URL) {
   console.error("🔴 ERREUR : La variable DATABASE_URL est manquante dans le .env");
