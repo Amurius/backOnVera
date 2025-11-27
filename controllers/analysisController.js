@@ -130,7 +130,7 @@ export const analyzeVideo = async (req, res) => {
 export const analyzeText = async (req, res) => {
   try {
     const { text } = req.body;
-    const userId = req.userId;
+    const userId = req.userId ?? "anonyme";
 
     if (!text) {
       return res.status(422).json({ message: 'Texte requis' });
