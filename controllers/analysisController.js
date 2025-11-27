@@ -19,14 +19,14 @@ export const analyzeImage = async (req, res) => {
     const base64Image = req.file.buffer.toString("base64");
     
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1-mini",
       messages: [
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Analyse cette image et retourne de manière structurée la description. Effectue une analyse OCR complète."
+              text: "Extrais toutes les informations et affirmations factuelles presentes. Retourne uniquement ces informations sous forme de liste ou de texte, sans introduction ni commentaire. Ne mentionne jamais qu'il s'agit d'une image."
             },
 
             {
@@ -38,7 +38,7 @@ export const analyzeImage = async (req, res) => {
           ]
         }
       ],
-      max_tokens: 1000
+      max_tokens: 5000
     });
 
     const extractedText = response.choices[0].message.content;
@@ -77,14 +77,14 @@ export const analyzeVideo = async (req, res) => {
     // Note : L'audio est dispo dans req.audio si tu veux le transcrire avec Whisper ici
 
     const videoAnalysis = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.1",
       messages: [
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Analyse cette vidéo frame par frame et décris ce que tu vois : les actions, les objets, les personnes, le contexte général. Fournis une description détaillée."
+              text: "Extrais toutes les informations et affirmations factuelles presentes. Decris les actions, les objets, les personnes et le contexte. Retourne uniquement ces informations sans introduction ni commentaire. Ne mentionne jamais qu'il s'agit d'une video, d'images ou de frames."
             },
             // On map correctement les images pour GPT-4 Vision
             ...imagesBase64.map((img64) => ({
@@ -96,7 +96,7 @@ export const analyzeVideo = async (req, res) => {
           ]
         }
       ],
-      max_tokens: 4000
+      max_tokens: 100000
     });
 
     const videoDescription = videoAnalysis.choices[0].message.content;

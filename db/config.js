@@ -33,7 +33,9 @@ console.log("🔌 Tentative de connexion à la BDD (SSL activé)...");
 
 export const query = async (text, params) => {
   const start = Date.now();
-  try {
+
+
+ try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
     // On garde le log de performance, c'est utile pour le debug
