@@ -1,21 +1,27 @@
+/*
+ * ROUTES NON UTILISEES - Le frontend utilise chatRoutes.js
+ * Import commente dans server.js
+ * Conserve pour reference
+ */
+
+/*
 import express from 'express';
-import { 
-  analyzeImage, 
-  analyzeVideo, 
-  analyzeText, 
-  getOcrAnalyses, 
-  getVideoAnalyses 
+import {
+  analyzeImage,
+  analyzeVideo,
+  analyzeText,
+  getOcrAnalyses,
+  getVideoAnalyses
 } from '../controllers/analysisController.js';
 
-import upload from "../middlewares/upload.js";
-import { uploadAndProcessVideo } from "../middlewares/upload.js";
+import upload, { uploadVideo } from "../middlewares/upload.js";
 
 const router = express.Router();
 
 router.post('/ocr', upload.single('image'), analyzeImage);
 
-// Pour la vidéo, on utilise ton middleware spécial de traitement
-router.post('/video', uploadAndProcessVideo, analyzeVideo);
+// Pour la video, on envoie directement a Gemini
+router.post('/video', uploadVideo, analyzeVideo);
 
 router.post('/text', analyzeText);
 
@@ -24,3 +30,4 @@ router.get('/ocr', getOcrAnalyses);
 router.get('/video', getVideoAnalyses);
 
 export default router;
+*/

@@ -47,20 +47,109 @@ export const createSurvey = async (req, res) => {
 };
 
 // ==========================================
-// 2. LISTE DES SONDAGES
+// 2. LISTE DES SONDAGES (actifs uniquement)
 // ==========================================
 export const getSurveys = async (req, res) => {
   try {
     const result = await query(
-      `SELECT s.*, u.email as creator_email 
-       FROM surveys s 
-       JOIN users u ON s.created_by = u.id 
-       WHERE s.is_active = true 
+      `SELECT s.*, u.email as creator_email
+       FROM surveys s
+       JOIN users u ON s.created_by = u.id
+       WHERE s.is_active = true
        ORDER BY s.created_at DESC`
     );
     res.json({ surveys: result.rows });
   } catch (error) {
     res.status(500).json({ message: 'Erreur récupération sondages' });
+  }
+};
+
+// ==========================================
+// 2b. LISTE DE TOUS LES SONDAGES (admin)
+// ==========================================
+export const getAllSurveys = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT s.*, u.email as creator_email,
+        (SELECT COUNT(*) FROM survey_responses sr WHERE sr.survey_id = s.id) as response_count
+       FROM surveys s
+       JOIN users u ON s.created_by = u.id
+       ORDER BY s.is_active DESC, s.created_at DESC`
+    );
+    res.json({ surveys: result.rows });
+  } catch (error) {
+    console.error('Erreur getAllSurveys:', error);
+    res.status(500).json({ message: 'Erreur récupération sondages' });
+  }
+};
+
+// ==========================================
+// 2c. ACTIVER UN SONDAGE (desactive les autres)
+// ==========================================
+export const setActiveSurvey = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Desactiver tous les sondages
+    await query('UPDATE surveys SET is_active = false WHERE is_active = true');
+
+    // Activer le sondage selectionne
+    const result = await query(
+      'UPDATE surveys SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Sondage non trouve' });
+    }
+
+    res.json({ message: 'Sondage active avec succes', survey: result.rows[0] });
+  } catch (error) {
+    console.error('Erreur setActiveSurvey:', error);
+    res.status(500).json({ message: 'Erreur activation sondage' });
+  }
+};
+
+// ==========================================
+// 2d. DESACTIVER UN SONDAGE
+// ==========================================
+export const deactivateSurvey = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      'UPDATE surveys SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Sondage non trouve' });
+    }
+
+    res.json({ message: 'Sondage desactive', survey: result.rows[0] });
+  } catch (error) {
+    console.error('Erreur deactivateSurvey:', error);
+    res.status(500).json({ message: 'Erreur desactivation sondage' });
+  }
+};
+
+// ==========================================
+// 2e. SUPPRIMER UN SONDAGE
+// ==========================================
+export const deleteSurvey = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query('DELETE FROM surveys WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Sondage non trouve' });
+    }
+
+    res.json({ message: 'Sondage supprime avec succes' });
+  } catch (error) {
+    console.error('Erreur deleteSurvey:', error);
+    res.status(500).json({ message: 'Erreur suppression sondage' });
   }
 };
 

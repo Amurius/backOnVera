@@ -1,52 +1,65 @@
 import express from 'express';
-import { 
-  getSurveys, 
-  getActiveSurvey,            // 🆕 (Artus)
-  getSurveyById, 
-  submitSurveyResponse, 
-  submitPublicSurveyResponse, // 🆕 (Artus)
+import {
+  getSurveys,
+  getAllSurveys,
+  getActiveSurvey,
+  getSurveyById,
+  submitSurveyResponse,
+  submitPublicSurveyResponse,
   getSurveyResults,
-  createSurvey                // 🆕 (Ajouté dans le contrôleur précédent)
+  createSurvey,
+  setActiveSurvey,
+  deactivateSurvey,
+  deleteSurvey
 } from '../controllers/surveyController.js';
 
-// ✅ SÉCURITÉ : On utilise TON middleware corrigé
 import { verifyToken, isAdmin } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 // ==========================================
-// 🔓 ROUTES PUBLIQUES
+// ROUTES PUBLIQUES
 // ==========================================
 
-// Liste de tous les sondages
+// Liste des sondages actifs
 router.get('/', getSurveys);
 
-// Le sondage "À la une" (pour l'accueil)
+// Le sondage actif (pour l'accueil)
 router.get('/active', getActiveSurvey);
 
-// Détails d'un sondage spécifique
-router.get('/:id', getSurveyById);
-
-// Répondre sans être connecté (Anonyme)
+// Repondre sans etre connecte (Anonyme)
 router.post('/public-response', submitPublicSurveyResponse);
 
-
 // ==========================================
-// 🔒 ROUTES PROTÉGÉES (Utilisateur connecté)
+// ROUTES PROTEGEES (Utilisateur connecte)
 // ==========================================
 
-// Répondre en tant que membre
+// Repondre en tant que membre
 router.post('/response', verifyToken, submitSurveyResponse);
 
-
 // ==========================================
-// 👑 ADMIN / MODO
+// ADMIN / MODO
 // ==========================================
 
-// Créer un nouveau sondage (On l'a codé, il faut la route !)
+// Liste de TOUS les sondages (actifs et inactifs)
+router.get('/all', verifyToken, getAllSurveys);
+
+// Creer un nouveau sondage
 router.post('/', verifyToken, createSurvey);
 
-// Voir les résultats
+// Activer un sondage (desactive les autres)
+router.put('/:id/activate', verifyToken, setActiveSurvey);
+
+// Desactiver un sondage
+router.put('/:id/deactivate', verifyToken, deactivateSurvey);
+
+// Supprimer un sondage
+router.delete('/:id', verifyToken, deleteSurvey);
+
+// Voir les resultats
 router.get('/:id/results', verifyToken, getSurveyResults);
+
+// Details d'un sondage specifique (doit etre apres les routes specifiques)
+router.get('/:id', getSurveyById);
 
 export default router;

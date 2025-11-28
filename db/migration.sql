@@ -100,6 +100,19 @@ CREATE TABLE IF NOT EXISTS ocr_analyses (
     REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Table chat_messages
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  role VARCHAR(20) NOT NULL,
+  content TEXT NOT NULL,
+  content_type VARCHAR(20) DEFAULT 'text',
+  file_name VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_chat_messages_user_id FOREIGN KEY (user_id)
+    REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- ==============================================
 -- INDEX
 -- ==============================================
@@ -114,6 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_question_responses_survey_response_id ON question
 CREATE INDEX IF NOT EXISTS idx_question_responses_question_id ON question_responses(question_id);
 CREATE INDEX IF NOT EXISTS idx_video_analyses_user_id ON video_analyses(user_id);
 CREATE INDEX IF NOT EXISTS idx_ocr_analyses_user_id ON ocr_analyses(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id);
 
 -- ==============================================
 -- FONCTIONS ET TRIGGERS
