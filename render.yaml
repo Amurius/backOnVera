@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: sondage-backend
+    env: node
+    buildCommand: |
+      apt-get update
+      apt-get install -y yt-dlp
+      bun install
+    startCommand: bun run start

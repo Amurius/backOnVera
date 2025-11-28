@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { execSync } from 'child_process';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -60,6 +61,63 @@ const extractYouTubeId = (url) => {
 // Verifie si c'est un lien YouTube valide
 const isYouTubeUrl = (url) => {
   return extractYouTubeId(url) !== null;
+};
+
+// Fallback: Recupere les sous-titres avec yt-dlp si youtube-transcript-plus echoue
+const fetchTranscriptWithYtDlp = (videoId) => {
+  const tempDir = os.tmpdir();
+  const outputPath = path.join(tempDir, `yt-${videoId}`);
+
+  try {
+    // Telecharger les sous-titres avec yt-dlp (auto-generated ou manuels)
+    execSync(
+      `yt-dlp --skip-download --write-auto-sub --write-sub --sub-lang fr,en --sub-format vtt -o "${outputPath}" "https://www.youtube.com/watch?v=${videoId}"`,
+      { stdio: 'pipe', timeout: 60000 }
+    );
+
+    // Chercher le fichier de sous-titres genere
+    const files = fs.readdirSync(tempDir);
+    const subtitleFile = files.find(f => f.startsWith(`yt-${videoId}`) && (f.endsWith('.vtt') || f.endsWith('.srt')));
+
+    if (!subtitleFile) {
+      throw new Error('Aucun fichier de sous-titres trouve');
+    }
+
+    const subtitlePath = path.join(tempDir, subtitleFile);
+    const content = fs.readFileSync(subtitlePath, 'utf-8');
+
+    // Nettoyer le fichier temporaire
+    fs.unlinkSync(subtitlePath);
+
+    // Parser le VTT/SRT pour extraire le texte
+    const lines = content.split('\n');
+    const textLines = lines.filter(line => {
+      // Ignorer les timestamps, numeros de sequence et lignes vides
+      return line.trim() &&
+             !line.match(/^\d+$/) &&
+             !line.match(/^WEBVTT/) &&
+             !line.match(/^\d{2}:\d{2}/) &&
+             !line.match(/-->/);
+    });
+
+    // Supprimer les tags HTML et balises VTT
+    const cleanText = textLines
+      .map(line => line.replace(/<[^>]+>/g, '').trim())
+      .filter(line => line.length > 0)
+      .join(' ');
+
+    return cleanText;
+  } catch (error) {
+    // Nettoyer les fichiers temporaires en cas d'erreur
+    try {
+      const files = fs.readdirSync(tempDir);
+      files.filter(f => f.startsWith(`yt-${videoId}`)).forEach(f => {
+        fs.unlinkSync(path.join(tempDir, f));
+      });
+    } catch (e) {}
+
+    throw error;
+  }
 };
 
 // Fonction pour envoyer des chunks SSE
@@ -487,10 +545,19 @@ export const streamChatYouTube = async (req, res) => {
       const transcripts = await fetchTranscript(videoId);
       transcript = transcripts.map((t) => t.text).join(' ');
     } catch (transcriptError) {
-      console.log(transcriptError)
-      sendSSE(res, { error: 'Impossible de recuperer la transcription. La video n\'a peut-etre pas de sous-titres.', transError: transcriptError });
-      res.write('data: [DONE]\n\n');
-      return res.end();
+      console.log('youtube-transcript-plus a echoue, tentative avec yt-dlp...', transcriptError);
+      sendSSE(res, 'Methode principale echouee, tentative avec methode alternative...\n\n');
+
+      // Fallback avec yt-dlp
+      try {
+        transcript = fetchTranscriptWithYtDlp(videoId);
+        console.log('Transcription recuperee avec yt-dlp');
+      } catch (ytdlpError) {
+        console.log('yt-dlp a aussi echoue:', ytdlpError);
+        sendSSE(res, { error: 'Impossible de recuperer la transcription. La video n\'a peut-etre pas de sous-titres.', transError: transcriptError });
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
     }
 
     if (!transcript || transcript.trim().length === 0) {
