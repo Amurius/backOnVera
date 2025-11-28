@@ -1,15 +1,14 @@
 /**
  * Service NLP pour la generation d'embeddings semantiques
- * Utilise @xenova/transformers pour le traitement local
+ * Utilise @huggingface/transformers pour le traitement local
  */
 
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 import { ClusteringConfig } from './clusteringConfig.js';
 
-// Configuration de l'environnement Xenova
+// Configuration de l'environnement HuggingFace
 env.cacheDir = './.cache/transformers';
 env.allowLocalModels = true;
-env.useBrowserCache = false;
 
 // Singleton pour le pipeline d'embeddings
 let embeddingPipeline = null;
