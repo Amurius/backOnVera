@@ -6,11 +6,14 @@ import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import factCheckRoutes from './routes/factCheckRoutes.js';
+import tiktokRoutes from './routes/tiktokRoutes.js'; // <--- 1. Est-ce que cette ligne est là ?
+
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 
 app.use(cors());
 app.use(express.json());
@@ -25,6 +28,9 @@ app.use('/api/surveys', surveyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/fact-check', factCheckRoutes);
+app.use('/api/tiktok', tiktokRoutes);
+app.use('/api/analysis', analysisRoutes);
+
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -34,3 +40,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
 });
+
+
+
