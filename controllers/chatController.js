@@ -487,7 +487,8 @@ export const streamChatYouTube = async (req, res) => {
       const transcripts = await fetchTranscript(videoId);
       transcript = transcripts.map((t) => t.text).join(' ');
     } catch (transcriptError) {
-      sendSSE(res, { error: 'Impossible de recuperer la transcription. La video n\'a peut-etre pas de sous-titres.' });
+      console.log(transcriptError)
+      sendSSE(res, { error: 'Impossible de recuperer la transcription. La video n\'a peut-etre pas de sous-titres.', transError: transcriptError });
       res.write('data: [DONE]\n\n');
       return res.end();
     }
