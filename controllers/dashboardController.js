@@ -7,7 +7,8 @@ export const getDashboardStats = async (req, res) => {
     const surveysCreatedResult = await query(
       'SELECT COUNT(*) as count FROM surveys WHERE created_by = $1',
       [userId]
-    );
+    );$
+    
 
     const responsesGivenResult = await query(
       'SELECT COUNT(*) as count FROM survey_responses WHERE user_id = $1',
@@ -68,4 +69,19 @@ export const getMyResponses = async (req, res) => {
     console.error('Erreur lors de la récupération des réponses:', error);
     res.status(500).json({ message: 'Erreur lors de la récupération des réponses' });
   }
+};
+
+export const getTopQuestions = async (req, res) => {
+  const { startDate, endDate, country } = req.query; 
+
+  const sql = `
+    SELECT text_message, COUNT(*) as frequency, language
+    FROM messages
+    WHERE created_at BETWEEN $1 AND $2
+    ${country ? "AND country = $3" : ""} 
+    GROUP BY text_message, language
+    ORDER BY frequency DESC
+    LIMIT 10;
+  `;
+  
 };

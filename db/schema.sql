@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
   last_name VARCHAR(100),
   role VARCHAR(50) DEFAULT 'user',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN country VARCHAR(5) DEFAULT 'FR', -- ex: 'FR', 'US'
+  ADD COLUMN language VARCHAR(5) DEFAULT 'fr'; -- ex: 'fr', 'en'
 );
 
 -- Table des sondages
@@ -83,6 +85,8 @@ CREATE INDEX IF NOT EXISTS idx_survey_responses_user_id ON survey_responses(user
 CREATE INDEX IF NOT EXISTS idx_question_responses_survey_response_id ON question_responses(survey_response_id);
 CREATE INDEX IF NOT EXISTS idx_ocr_analyses_user_id ON ocr_analyses(user_id);
 CREATE INDEX IF NOT EXISTS idx_video_analyses_user_id ON video_analyses(user_id);
+-- Filtres pays dans le dashboard
+CREATE INDEX idx_users_country ON users(country);
 
 -- Fonction pour mettre à jour automatiquement updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
