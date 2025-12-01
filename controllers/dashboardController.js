@@ -7,7 +7,7 @@ export const getDashboardStats = async (req, res) => {
     const surveysCreatedResult = await query(
       'SELECT COUNT(*) as count FROM surveys WHERE created_by = $1',
       [userId]
-    );$
+    );
     
 
     const responsesGivenResult = await query(
