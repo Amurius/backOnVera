@@ -3,7 +3,8 @@ import {
   getDashboardStats, 
   getMySurveys, 
   getMyResponses,
-  getTopQuestions
+  getTopQuestions,
+  exportFullDashboardCSV
 } from '../controllers/dashboardController.js';
 
 // ✅ On utilise le bon middleware
@@ -18,5 +19,6 @@ router.get('/stats', getDashboardStats);
 router.get('/my-surveys', getMySurveys);
 router.get('/my-responses', getMyResponses);
 router.get('/top-questions', verifyToken, getTopQuestions);
+router.get('/export/full', exportFullDashboardCSV);
 
 export default router;
