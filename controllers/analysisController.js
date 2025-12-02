@@ -1,10 +1,4 @@
-/*
- * CONTROLLER NON UTILISE - Le frontend utilise chatController.js
- * Routes commentees dans server.js
- * Conserve pour reference
- */
 
-/*
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/server';
@@ -249,4 +243,3 @@ export const getVideoAnalyses = async (req, res) => {
     res.status(500).json({ message: 'Erreur lors de la recuperation des analyses' });
   }
 };
-*/
