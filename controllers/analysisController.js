@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { query } from '../db/config.js';
 
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });

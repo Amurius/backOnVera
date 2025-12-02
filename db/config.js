@@ -1,7 +1,11 @@
-import { Pool } from '@neondatabase/serverless';
+import { Pool, neonConfig } from '@neondatabase/serverless'; // 1. On ajoute neonConfig
 import dotenv from 'dotenv';
+import ws from 'ws'; // 2. On importe la librairie WebSocket
 
 dotenv.config();
+
+// 3. OBLIGATOIRE : On configure le WebSocket pour Node.js (Local & Render)
+neonConfig.webSocketConstructor = ws;
 
 // Vérification de sécurité pour éviter les crashs silencieux
 if (!process.env.DATABASE_URL) {

@@ -1,15 +1,19 @@
-const express = require('express');
+import express from 'express';
+import telegramBotController from '../controllers/telegramController.js';
+
 const router = express.Router();
-const telegramController = require('../controllers/telegramController');
 
-// Route pour gérer les webhooks Telegram
+// Route principale que Telegram appelle (Webhook)
 router.post('/webhook', (req, res) => {
-    return telegramController.getWebhookMiddleware()(req, res);
+    telegramBotController.handleWebhook(req, res);
 });
 
-// Route de test pour vérifier que le serveur fonctionne
-router.get("/status", (req, res) => {
-    res.json({ status: "Telegram webhook actif" });
+// Route pour vérifier l'état
+router.get('/status', (req, res) => {
+    res.json({ 
+        online: telegramBotController.isRunning,
+        mode: process.env.NODE_ENV === 'production' ? 'Webhook' : 'Polling'
+    });
 });
 
-module.exports = router;
+export default router;
