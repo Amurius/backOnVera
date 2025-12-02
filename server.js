@@ -6,16 +6,12 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
-// import factCheckRoutes from './routes/factCheckRoutes.js'; // Correction nom doublon
 import telegramRoutes from './routes/telegramRoutes.js';
 import analysitRoutes from './routes/analysisRoutes.js';
 
 // Import du controller Telegram pour le démarrage
 import telegramBotController from './controllers/telegramController.js';
-// import factCheckRoutes from './routes/analysisRoutes.js';
-import factCheckRoutes from './routes/factCheckRoutes.js';
 import tiktokRoutes from './routes/tiktokRoutes.js'; // <--- 1. Est-ce que cette ligne est là ?
-
 import chatRoutes from './routes/chatRoutes.js';
 import clusteringRoutes from './routes/clusteringRoutes.js';
 import { preloadModel } from './services/nlpService.js';
@@ -65,11 +61,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/analysis', analysisRoutes);
-app.use('/api/fact-check', factCheckRoutes);
 app.use('/api/tiktok', tiktokRoutes);
-app.use('/api/analysis', analysisRoutes);
-
-// app.use('/api/fact-check', factCheckRoutes);
 app.use('/api/telegram', telegramRoutes); // Important pour le Webhook
 app.use('/api/chat', chatRoutes);
 
