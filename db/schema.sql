@@ -1,10 +1,9 @@
--- Création de la base de données
--- CREATE DATABASE sondage_db;
-
 -- Extension pour UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Table des utilisateurs
+-- ==========================================
+-- 1. UTILISATEURS
+-- ==========================================
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email VARCHAR(255) UNIQUE NOT NULL,
@@ -14,11 +13,13 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(50) DEFAULT 'user',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  ADD COLUMN country VARCHAR(5) DEFAULT 'FR', -- ex: 'FR', 'US'
-  ADD COLUMN language VARCHAR(5) DEFAULT 'fr'; -- ex: 'fr', 'en'
+  country VARCHAR(5) DEFAULT 'FR',
+  language VARCHAR(5) DEFAULT 'fr'
 );
 
--- Table des sondages
+-- ==========================================
+-- 2. SONDAGES
+-- ==========================================
 CREATE TABLE IF NOT EXISTS surveys (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   title VARCHAR(255) NOT NULL,
@@ -29,19 +30,17 @@ CREATE TABLE IF NOT EXISTS surveys (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table des questions
 CREATE TABLE IF NOT EXISTS questions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   survey_id UUID REFERENCES surveys(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
-  question_type VARCHAR(50) NOT NULL, -- text, multiple_choice, rating, etc.
-  options JSONB, -- Pour les questions à choix multiples
+  question_type VARCHAR(50) NOT NULL,
+  options JSONB,
   is_required BOOLEAN DEFAULT false,
   order_index INTEGER,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table des réponses aux sondages
 CREATE TABLE IF NOT EXISTS survey_responses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   survey_id UUID REFERENCES surveys(id) ON DELETE CASCADE,
@@ -49,7 +48,6 @@ CREATE TABLE IF NOT EXISTS survey_responses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table des réponses aux questions
 CREATE TABLE IF NOT EXISTS question_responses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   survey_response_id UUID REFERENCES survey_responses(id) ON DELETE CASCADE,
@@ -58,7 +56,9 @@ CREATE TABLE IF NOT EXISTS question_responses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table pour stocker les analyses OCR
+-- ==========================================
+-- 3. ANALYSES IA (Images/Vidéos)
+-- ==========================================
 CREATE TABLE IF NOT EXISTS ocr_analyses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -67,7 +67,6 @@ CREATE TABLE IF NOT EXISTS ocr_analyses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table pour stocker les analyses vidéo
 CREATE TABLE IF NOT EXISTS video_analyses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -77,7 +76,42 @@ CREATE TABLE IF NOT EXISTS video_analyses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour améliorer les performances
+-- ==========================================
+-- 4. VERA CHAT & CLUSTERING (C'est ici que tu avais des soucis)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS user_questions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  
+  -- Contenu
+  question_text TEXT NOT NULL,
+  normalized_text TEXT,
+  
+  -- Localisation
+  country VARCHAR(5) DEFAULT 'XX',
+  language VARCHAR(5) DEFAULT 'xx',
+  
+  -- Clustering IA
+  cluster_id UUID,
+  similarity_score FLOAT,
+  processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Historique complet du chat
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL, -- 'user', 'assistant', 'system'
+  content TEXT,
+  content_type VARCHAR(20) DEFAULT 'text', -- 'text', 'image', 'video'
+  file_name TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==========================================
+-- 5. INDEX (Performances)
+-- ==========================================
 CREATE INDEX IF NOT EXISTS idx_surveys_created_by ON surveys(created_by);
 CREATE INDEX IF NOT EXISTS idx_questions_survey_id ON questions(survey_id);
 CREATE INDEX IF NOT EXISTS idx_survey_responses_survey_id ON survey_responses(survey_id);
@@ -86,7 +120,10 @@ CREATE INDEX IF NOT EXISTS idx_question_responses_survey_response_id ON question
 CREATE INDEX IF NOT EXISTS idx_ocr_analyses_user_id ON ocr_analyses(user_id);
 CREATE INDEX IF NOT EXISTS idx_video_analyses_user_id ON video_analyses(user_id);
 -- Filtres pays dans le dashboard
-CREATE INDEX idx_users_country ON users(country);
+CREATE INDEX IF NOT EXISTS idx_users_country ON users(country);
+CREATE INDEX IF NOT EXISTS idx_user_questions_cluster_id ON user_questions(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_user_questions_country ON user_questions(country);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
 
 -- Fonction pour mettre à jour automatiquement updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -97,7 +134,6 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Triggers pour updated_at
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

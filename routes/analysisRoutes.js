@@ -1,15 +1,33 @@
+/*
+ * ROUTES NON UTILISEES - Le frontend utilise chatRoutes.js
+ * Import commente dans server.js
+ * Conserve pour reference
+ */
+
+/*
 import express from 'express';
-import path from 'path';
-import { analyzeImage, analyzeVideo, analyzeText, getOcrAnalyses, getVideoAnalyses } from '../controllers/analysisController.js';
-import { authMiddleware } from '../middlewares/auth.js';
-import upload from "../middlewares/upload.js";
-import { uploadAndProcessVideo } from "../middlewares/upload.js";
+import {
+  analyzeImage,
+  analyzeVideo,
+  analyzeText,
+  getOcrAnalyses,
+  getVideoAnalyses
+} from '../controllers/analysisController.js';
+
+import upload, { uploadVideo } from "../middlewares/upload.js";
+
 const router = express.Router();
 
-router.post('/ocr', authMiddleware, upload.single('image'), analyzeImage);
-router.post('/video', authMiddleware, uploadAndProcessVideo, analyzeVideo);
-router.post('/text', authMiddleware, analyzeText);
-router.get('/ocr', authMiddleware, getOcrAnalyses);
-router.get('/video', authMiddleware, getVideoAnalyses);
+router.post('/ocr', upload.single('image'), analyzeImage);
+
+// Pour la video, on envoie directement a Gemini
+router.post('/video', uploadVideo, analyzeVideo);
+
+router.post('/text', analyzeText);
+
+// Historiques
+router.get('/ocr', getOcrAnalyses);
+router.get('/video', getVideoAnalyses);
 
 export default router;
+*/
