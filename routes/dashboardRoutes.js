@@ -3,20 +3,21 @@ import {
   getDashboardStats, 
   getMySurveys, 
   getMyResponses,
-  getTopQuestions
+  getTopQuestions,
+  getUserQuestions,getFilterOptions
 } from '../controllers/dashboardController.js';
 
-// ✅ On utilise le bon middleware
 import { verifyToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// 🔒 On protège toutes les routes ci-dessous
 router.use(verifyToken);
 
 router.get('/stats', getDashboardStats);
 router.get('/my-surveys', getMySurveys);
 router.get('/my-responses', getMyResponses);
+router.get('/user-questions', getUserQuestions);
 router.get('/top-questions', verifyToken, getTopQuestions);
+router.get('/filters', verifyToken, getFilterOptions);
 
 export default router;

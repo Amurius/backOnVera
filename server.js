@@ -4,12 +4,10 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
-// import factCheckRoutes from './routes/analysisRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import clusteringRoutes from './routes/clusteringRoutes.js';
 import { preloadModel } from './services/nlpService.js';
 import { validateConfig } from './services/clusteringConfig.js';
-//import factCheckRoutes from './routes/factCheckRoutes.js';
 
 dotenv.config();
 
@@ -24,7 +22,24 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// 👇 CONFIGURATION CORS MISE À JOUR 👇
+// Accepte le port 4200 (Angular standard) ET ton port actuel 63420
+app.use(cors({
+  origin: function (origin, callback) {
+    // Autorise les requêtes sans origine (ex: curl, mobile apps)
+    if (!origin) return callback(null, true);
+    
+    // Autorise n'importe quel localhost (4200, 63420, etc.)
+    if (origin.startsWith('http://localhost')) {
+      return callback(null, true);
+    }
+    
+    // Bloque le reste
+    callback(new Error('Non autorisé par CORS'));
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -32,15 +47,18 @@ app.get('/', (req, res) => {
   res.json({ message: 'API Sondage - Serveur opérationnel' });
 });
 
+// Déclaration des Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 // app.use('/api/fact-check', factCheckRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/clustering', clusteringRoutes);
-//Doublon avec openAI
-//app.use('/api/fact-check', factCheckRoutes);
 
+// 👇 LA ROUTE CHAT (Celle qui posait problème)
+app.use('/api/chat', chatRoutes);
+
+app.use('/api/clustering', clusteringRoutes);
+
+// Gestion d'erreurs globale
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: 'Une erreur est survenue sur le serveur' });

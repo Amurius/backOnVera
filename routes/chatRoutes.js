@@ -11,19 +11,19 @@ import { verifyToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// Stream chat avec texte
+// Appelé par Angular via: API_URL/chat/stream
 router.post('/stream', streamChat);
 
-// Stream chat avec fichier (image/video)
-router.post('/stream-file', upload.single('file'), streamChatFile);
+// 2. Stream chat avec fichier (image/video)
+router.post('/upload', upload.single('file'), streamChatFile);
 
-// Stream chat avec lien YouTube
-router.post('/stream-youtube', streamChatYouTube);
+// 3. Stream chat avec lien YouTube
+router.post('/youtube', streamChatYouTube);
 
-// Historique des messages (authentification requise)
+// 4. Historique des messages (authentification requise)
 router.get('/history', verifyToken, getChatHistory);
 
-// Effacer l'historique (authentification requise)
+// 5. Effacer l'historique (authentification requise)
 router.delete('/history', verifyToken, clearChatHistory);
 
 export default router;
