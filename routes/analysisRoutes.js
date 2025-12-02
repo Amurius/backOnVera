@@ -1,10 +1,4 @@
-/*
- * ROUTES NON UTILISEES - Le frontend utilise chatRoutes.js
- * Import commente dans server.js
- * Conserve pour reference
- */
 
-/*
 import express from 'express';
 import {
   analyzeImage,
@@ -30,4 +24,3 @@ router.get('/ocr', getOcrAnalyses);
 router.get('/video', getVideoAnalyses);
 
 export default router;
-*/
