@@ -7,7 +7,7 @@ import authRoutes from './routes/authRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import telegramRoutes from './routes/telegramRoutes.js';
-import analysitRoutes from './routes/analysisRoutes.js';
+import analysisRoutes from './routes/analysisRoutes.js';
 
 // Import du controller Telegram pour le démarrage
 import telegramBotController from './controllers/telegramController.js';
