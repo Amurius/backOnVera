@@ -73,14 +73,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Une erreur est survenue sur le serveur' });
 });
 
-// Démarrage du serveur
 app.listen(PORT, async () => {
-  console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+  console.log(`Serveur demarre sur le port ${PORT}`);
 
-  // ==========================================
-  // INITIALISATION DU BOT TELEGRAM
-  // ==========================================
-  try {
+  // Precharge le modele NLP en arriere-plan
+  console.log('Prechargement du modele NLP...');
+  preloadModel()
+    .then(() => console.log('Modele NLP pret pour le clustering'))
+    .catch(err => console.error('Echec du prechargement NLP:', err.message));
+
+    try {
     // Si on est en production (sur un serveur avec HTTPS), on utilise le Webhook
     if (process.env.NODE_ENV === 'production') {
       console.log('🌍 Mode Production détecté : Configuration du Webhook Telegram...');
@@ -94,13 +96,4 @@ app.listen(PORT, async () => {
   } catch (error) {
     console.error('❌ Échec du démarrage du service Telegram:', error);
   }
-});
-app.listen(PORT, async () => {
-  console.log(`Serveur demarre sur le port ${PORT}`);
-
-  // Precharge le modele NLP en arriere-plan
-  console.log('Prechargement du modele NLP...');
-  preloadModel()
-    .then(() => console.log('Modele NLP pret pour le clustering'))
-    .catch(err => console.error('Echec du prechargement NLP:', err.message));
 });
