@@ -4,6 +4,7 @@ import {
   getMySurveys,
   getMyResponses,
   getTopQuestions,
+  exportFullDashboardCSV,
   getUserQuestions,
   getFilterOptions,
   getCountryStats,
@@ -21,6 +22,7 @@ router.use(verifyToken);
 router.get('/stats', getDashboardStats);
 router.get('/my-surveys', getMySurveys);
 router.get('/my-responses', getMyResponses);
+router.get('/export/full', exportFullDashboardCSV);
 router.get('/user-questions', getUserQuestions);
 router.get('/top-questions', getTopQuestions);
 router.get('/filters', getFilterOptions);
