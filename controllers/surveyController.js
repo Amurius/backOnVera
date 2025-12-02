@@ -234,7 +234,7 @@ export const submitPublicSurveyResponse = async (req, res) => {
     if (!surveyId || !responses) return res.status(422).json({ message: "Données manquantes" });
 
     const userResult = await query(
-      `SELECT id from user where email = 'anonyme@anonyme.com'`
+      `SELECT id from users where email = 'anonyme@anonyme.com'`
     );
     const anonId = userResult.rows[0].id;
 
@@ -261,30 +261,68 @@ export const submitPublicSurveyResponse = async (req, res) => {
 export const getSurveyResults = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // 1. Récupérer le sondage
     const surveyResult = await query('SELECT * FROM surveys WHERE id = $1', [id]);
     if (surveyResult.rows.length === 0) return res.status(404).json({ message: 'Non trouvé' });
 
+    // 2. Compter le total de réponses
     const responsesResult = await query(
       'SELECT COUNT(DISTINCT id) as total_responses FROM survey_responses WHERE survey_id = $1',
       [id]
     );
 
+    // 3. Récupérer les questions
     const questionsResult = await query(
-      `SELECT q.*, COUNT(qr.id) as response_count 
-       FROM questions q 
-       LEFT JOIN question_responses qr ON q.id = qr.question_id 
-       WHERE q.survey_id = $1 
-       GROUP BY q.id 
-       ORDER BY q.order_index`,
+      `SELECT * FROM questions WHERE survey_id = $1 ORDER BY order_index`,
       [id]
+    );
+
+    // 4. Pour chaque question, récupérer la distribution des réponses
+    const questionsWithResponses = await Promise.all(
+      questionsResult.rows.map(async (question) => {
+        // Récupérer les réponses groupées par valeur
+        const answersResult = await query(
+          `SELECT answer, COUNT(*) as count
+           FROM question_responses
+           WHERE question_id = $1
+           GROUP BY answer
+           ORDER BY count DESC`,
+          [question.id]
+        );
+
+        // Construire l'objet responses {option: count}
+        const responses = {};
+        answersResult.rows.forEach(row => {
+          responses[row.answer] = parseInt(row.count);
+        });
+
+        // Parser les options si c'est une string, sinon les utiliser directement
+        let parsedOptions = [];
+        if (question.options) {
+          parsedOptions = typeof question.options === 'string'
+            ? JSON.parse(question.options)
+            : question.options;
+        }
+
+        return {
+          id: question.id,
+          question_text: question.question_text,
+          question_type: question.question_type,
+          options: parsedOptions,
+          order_index: question.order_index,
+          responses
+        };
+      })
     );
 
     res.json({
       survey: surveyResult.rows[0],
-      totalResponses: responsesResult.rows[0].total_responses,
-      questions: questionsResult.rows
+      totalResponses: parseInt(responsesResult.rows[0].total_responses),
+      questions: questionsWithResponses
     });
   } catch (error) {
+    console.error('Erreur getSurveyResults:', error);
     res.status(500).json({ message: 'Erreur récupération résultats' });
   }
 };

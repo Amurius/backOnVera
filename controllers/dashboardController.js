@@ -1,12 +1,10 @@
 import { query } from '../db/config.js';
 
 // ===============================
-//  DASHBOARD (Sondages)
+//  DASHBOARD (Sondages) - Stats GLOBALES
 // ===============================
 export const getDashboardStats = async (req, res) => {
     try {
-        const userId = req.userId;
-
         // 1. Sondage actif
         const activeSurveyResult = await query(
             `SELECT s.*, u.email as creator_email
@@ -17,7 +15,7 @@ export const getDashboardStats = async (req, res) => {
         );
         const activeSurvey = activeSurveyResult.rows[0] || null;
 
-        // 2. Questions
+        // 2. Questions du sondage actif
         let questions = [];
         if (activeSurvey) {
             const questionsResult = await query(
@@ -30,7 +28,7 @@ export const getDashboardStats = async (req, res) => {
             questions = questionsResult.rows;
         }
 
-        // 3. Total réponses
+        // 3. Total réponses du sondage actif (TOUTES les réponses, pas filtrées par user)
         let totalResponses = 0;
         if (activeSurvey) {
             const responsesCountResult = await query(
@@ -42,31 +40,28 @@ export const getDashboardStats = async (req, res) => {
             totalResponses = parseInt(responsesCountResult.rows[0].count);
         }
 
-        // 4. Statistiques générales
+        // 4. Statistiques GLOBALES (sans filtre userId)
         const surveysCreatedResult = await query(
-            'SELECT COUNT(*) as count FROM surveys WHERE created_by = $1',
-            [userId]
+            'SELECT COUNT(*) as count FROM surveys'
         );
 
         const videoAnalysesResult = await query(
-            'SELECT COUNT(*) as count FROM video_analyses WHERE user_id = $1',
-            [userId]
+            'SELECT COUNT(*) as count FROM video_analyses'
         );
 
         const ocrAnalysesResult = await query(
-            'SELECT COUNT(*) as count FROM ocr_analyses WHERE user_id = $1',
-            [userId]
+            'SELECT COUNT(*) as count FROM ocr_analyses'
         );
 
+        // 5. Sondages récents avec leur nombre de réponses (tous les sondages)
         const recentSurveysResult = await query(
-            `SELECT s.*, COUNT(DISTINCT sr.id) as response_count
+            `SELECT s.*, u.email as creator_email, COUNT(DISTINCT sr.id) as response_count
              FROM surveys s
+             LEFT JOIN users u ON s.created_by = u.id
              LEFT JOIN survey_responses sr ON s.id = sr.survey_id
-             WHERE s.created_by = $1
-             GROUP BY s.id
+             GROUP BY s.id, u.email
              ORDER BY s.created_at DESC
-             LIMIT 5`,
-            [userId]
+             LIMIT 5`
         );
 
         res.json({
@@ -214,17 +209,17 @@ export const getFilterOptions = async (req, res) => {
   try {
     // 1. Récupérer tous les pays uniques présents en base
     const countriesResult = await query(
-      `SELECT DISTINCT country 
-       FROM user_questions 
-       WHERE country IS NOT NULL AND country != 'XX' 
+      `SELECT DISTINCT country
+       FROM user_questions
+       WHERE country IS NOT NULL AND country != 'XX'
        ORDER BY country ASC`
     );
 
     // 2. Récupérer toutes les langues uniques présentes en base
     const languagesResult = await query(
-      `SELECT DISTINCT language 
-       FROM user_questions 
-       WHERE language IS NOT NULL AND language != 'xx' 
+      `SELECT DISTINCT language
+       FROM user_questions
+       WHERE language IS NOT NULL AND language != 'xx'
        ORDER BY language ASC`
     );
 
@@ -237,5 +232,113 @@ export const getFilterOptions = async (req, res) => {
   } catch (error) {
     console.error('Erreur récupération filtres:', error);
     res.status(500).json({ message: 'Erreur serveur filtres' });
+  }
+};
+
+// =========================================================
+// 📊 STATS PAR PAYS
+// =========================================================
+export const getCountryStats = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT
+        country,
+        COUNT(*) as count
+       FROM user_questions
+       WHERE country IS NOT NULL AND country != 'XX'
+       GROUP BY country
+       ORDER BY count DESC
+       LIMIT 10`
+    );
+
+    res.json({
+      success: true,
+      countries: result.rows
+    });
+
+  } catch (error) {
+    console.error('Erreur stats pays:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur stats pays' });
+  }
+};
+
+// =========================================================
+// 📊 STATS PAR LANGUE
+// =========================================================
+export const getLanguageStats = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT
+        language as lang,
+        COUNT(*) as count
+       FROM user_questions
+       WHERE language IS NOT NULL AND language != 'xx'
+       GROUP BY language
+       ORDER BY count DESC
+       LIMIT 10`
+    );
+
+    res.json({
+      success: true,
+      languages: result.rows
+    });
+
+  } catch (error) {
+    console.error('Erreur stats langues:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur stats langues' });
+  }
+};
+
+// =========================================================
+// 📈 EVOLUTION TEMPORELLE (Area Chart)
+// =========================================================
+export const getTimeSeriesStats = async (req, res) => {
+  try {
+    const { period } = req.query;
+
+    let interval = '7 days';
+    let groupBy = 'day';
+    let dateFormat = 'DD/MM';
+
+    if (period === '30d') {
+      interval = '30 days';
+      groupBy = 'day';
+      dateFormat = 'DD/MM';
+    } else if (period === '12m' || period === '1y') {
+      interval = '12 months';
+      groupBy = 'month';
+      dateFormat = 'Mon YYYY';
+    }
+
+    // Requête pour obtenir le nombre de questions par jour/mois
+    const sql = groupBy === 'day'
+      ? `SELECT
+          TO_CHAR(DATE_TRUNC('day', created_at), 'YYYY-MM-DD') as date,
+          TO_CHAR(DATE_TRUNC('day', created_at), '${dateFormat}') as label,
+          COUNT(*) as count
+         FROM user_questions
+         WHERE created_at >= NOW() - INTERVAL '${interval}'
+         GROUP BY DATE_TRUNC('day', created_at)
+         ORDER BY date ASC`
+      : `SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as date,
+          TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') as label,
+          COUNT(*) as count
+         FROM user_questions
+         WHERE created_at >= NOW() - INTERVAL '${interval}'
+         GROUP BY DATE_TRUNC('month', created_at)
+         ORDER BY date ASC`;
+
+    const result = await query(sql);
+
+    res.json({
+      success: true,
+      period,
+      data: result.rows
+    });
+
+  } catch (error) {
+    console.error('Erreur stats temporelles:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur stats temporelles' });
   }
 };
