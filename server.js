@@ -4,6 +4,10 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import analysisRoutes from './routes/analysisRoutes.js';
+import factCheckRoutes from './routes/factCheckRoutes.js';
+import tiktokRoutes from './routes/tiktokRoutes.js'; // <--- 1. Est-ce que cette ligne est là ?
+
 import chatRoutes from './routes/chatRoutes.js';
 import clusteringRoutes from './routes/clusteringRoutes.js';
 import { preloadModel } from './services/nlpService.js';
@@ -30,7 +34,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     // Autorise n'importe quel localhost (4200, 63420, etc.)
-    if (origin.startsWith('http://localhost')) {
+    if (origin.startsWith('http://localhost') || origin.startWith('https://front-on-vera.vercel.app')) {
       return callback(null, true);
     }
     
@@ -51,6 +55,11 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/analysis', analysisRoutes);
+app.use('/api/fact-check', factCheckRoutes);
+app.use('/api/tiktok', tiktokRoutes);
+app.use('/api/analysis', analysisRoutes);
+
 // app.use('/api/fact-check', factCheckRoutes);
 
 // 👇 LA ROUTE CHAT (Celle qui posait problème)

@@ -115,6 +115,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_surveys_created_by ON surveys(created_by);
 CREATE INDEX IF NOT EXISTS idx_questions_survey_id ON questions(survey_id);
 CREATE INDEX IF NOT EXISTS idx_survey_responses_survey_id ON survey_responses(survey_id);
+CREATE INDEX IF NOT EXISTS idx_survey_responses_user_id ON survey_responses(user_id);
+CREATE INDEX IF NOT EXISTS idx_question_responses_survey_response_id ON question_responses(survey_response_id);
+CREATE INDEX IF NOT EXISTS idx_ocr_analyses_user_id ON ocr_analyses(user_id);
+CREATE INDEX IF NOT EXISTS idx_video_analyses_user_id ON video_analyses(user_id);
+-- Filtres pays dans le dashboard
+CREATE INDEX IF NOT EXISTS idx_users_country ON users(country);
 CREATE INDEX IF NOT EXISTS idx_user_questions_cluster_id ON user_questions(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_user_questions_country ON user_questions(country);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);

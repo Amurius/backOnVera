@@ -239,3 +239,18 @@ export const getFilterOptions = async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur filtres' });
   }
 };
+
+export const getTopQuestions = async (req, res) => {
+  const { startDate, endDate, country } = req.query; 
+
+  const sql = `
+    SELECT text_message, COUNT(*) as frequency, language
+    FROM messages
+    WHERE created_at BETWEEN $1 AND $2
+    ${country ? "AND country = $3" : ""} 
+    GROUP BY text_message, language
+    ORDER BY frequency DESC
+    LIMIT 10;
+  `;
+  
+};
