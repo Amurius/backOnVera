@@ -13,11 +13,13 @@ import analysitRoutes from './routes/analysisRoutes.js';
 // Import du controller Telegram pour le démarrage
 import telegramBotController from './controllers/telegramController.js';
 // import factCheckRoutes from './routes/analysisRoutes.js';
+import factCheckRoutes from './routes/factCheckRoutes.js';
+import tiktokRoutes from './routes/tiktokRoutes.js'; // <--- 1. Est-ce que cette ligne est là ?
+
 import chatRoutes from './routes/chatRoutes.js';
 import clusteringRoutes from './routes/clusteringRoutes.js';
 import { preloadModel } from './services/nlpService.js';
 import { validateConfig } from './services/clusteringConfig.js';
-//import factCheckRoutes from './routes/factCheckRoutes.js';
 
 dotenv.config();
 
@@ -32,8 +34,24 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuration Express
-app.use(cors());
+// 👇 CONFIGURATION CORS MISE À JOUR 👇
+// Accepte le port 4200 (Angular standard) ET ton port actuel 63420
+app.use(cors({
+  origin: function (origin, callback) {
+    // Autorise les requêtes sans origine (ex: curl, mobile apps)
+    if (!origin) return callback(null, true);
+    
+    // Autorise n'importe quel localhost (4200, 63420, etc.)
+    if (origin.startsWith('http://localhost') || origin.startWith('https://front-on-vera.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // Bloque le reste
+    callback(new Error('Non autorisé par CORS'));
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -42,17 +60,20 @@ app.get('/', (req, res) => {
   res.json({ message: 'API Sondage - Serveur opérationnel' });
 });
 
-// Montage des routes
+// Déclaration des Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/analysis', analysisRoutes);
+app.use('/api/fact-check', factCheckRoutes);
+app.use('/api/tiktok', tiktokRoutes);
+app.use('/api/analysis', analysisRoutes);
+
 // app.use('/api/fact-check', factCheckRoutes);
 app.use('/api/telegram', telegramRoutes); // Important pour le Webhook
-app.use('/api/analysis', analysitRoutes);
 app.use('/api/chat', chatRoutes);
+
 app.use('/api/clustering', clusteringRoutes);
-//Doublon avec openAI
-//app.use('/api/fact-check', factCheckRoutes);
 
 // Gestion globale des erreurs
 app.use((err, req, res, next) => {

@@ -1,10 +1,9 @@
-import { Pool, neonConfig } from '@neondatabase/serverless'; // 1. On ajoute neonConfig
+import { Pool, neonConfig } from '@neondatabase/serverless'; // Ajout de neonConfig ici
 import dotenv from 'dotenv';
-import ws from 'ws'; // 2. On importe la librairie WebSocket
+import ws from 'ws';
 
 dotenv.config();
 
-// 3. OBLIGATOIRE : On configure le WebSocket pour Node.js (Local & Render)
 neonConfig.webSocketConstructor = ws;
 
 // Vérification de sécurité pour éviter les crashs silencieux
@@ -13,10 +12,9 @@ if (!process.env.DATABASE_URL) {
 }
 
 const pool = new Pool({
-  // 1. On utilise l'URL complète de Neon (plus simple et plus sûr)
+  // 1. On utilise l'URL complète de Neon
   connectionString: process.env.DATABASE_URL,
   
-  // 2. INDISPENSABLE POUR NEON : On active le SSL
   ssl: {
     rejectUnauthorized: false 
   },
@@ -32,21 +30,17 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
-// Petit log au démarrage pour confirmer que tout va bien
 console.log("🔌 Tentative de connexion à la BDD (SSL activé)...");
 
 export const query = async (text, params) => {
   const start = Date.now();
 
-
- try {
+  try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    // On garde le log de performance, c'est utile pour le debug
-    console.log('✅ Requête exécutée', { text, duration, rows: res.rowCount });
     return res;
   } catch (error) {
-    console.error('❌ Erreur de requête', error);
+    console.error('❌ Erreur de requête', { text, error: error.message });
     throw error;
   }
 };
