@@ -183,24 +183,31 @@ async function updateClusterCentroid(clusterId, newEmbedding, currentCount, curr
 }
 
 /**
- * Sauvegarde une question dans la base de donnees
- * @param {string} questionText - Texte original
- * @param {string} normalizedText - Texte normalise
- * @param {string|null} clusterId - ID du cluster associe
- * @param {number|null} similarityScore - Score de similarite
- * @returns {Promise<Object>} La question creee
+ * Sauvegarde une question dans la base de données
+ * CORRECTION ICI : Ajout des backticks (`) et de la variable result
  */
-async function saveQuestion(questionText, normalizedText, clusterId, similarityScore) {
+async function saveQuestion(questionText, normalizedText, clusterId, similarityScore, country = null, language = null) {
     const result = await query(`
         INSERT INTO user_questions (
             question_text,
             normalized_text,
             cluster_id,
             similarity_score,
-            processed_at
-        ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-        RETURNING id, question_text, cluster_id, similarity_score, created_at
-    `, [questionText, normalizedText, clusterId, similarityScore]);
+            country,
+            language,
+            processed_at,
+            created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING 
+            id,
+            question_text AS "questionText",
+            normalized_text AS "normalizedText",
+            cluster_id AS "clusterId",
+            similarity_score AS "similarityScore",
+            country,
+            language,
+            created_at AS "createdAt"
+    `, [questionText, normalizedText, clusterId, similarityScore, country, language]);
 
     return result.rows[0];
 }
@@ -297,20 +304,10 @@ async function updateClusterStats(clusterId, similarity) {
 
 /**
  * FONCTION PRINCIPALE: Traite une nouvelle question
- *
- * 1. Genere l'embedding
- * 2. Charge les clusters existants
- * 3. Calcule la similarite avec chaque cluster
- * 4. Selectionne le meilleur match
- * 5. Applique le seuil de similarite
- * 6. Associe au cluster existant OU cree un nouveau cluster
- * 7. Sauvegarde la question et l'embedding
- * 8. Met a jour les statistiques
- *
  * @param {string} questionText - Texte de la question
  * @returns {Promise<Object>} Resultat du traitement
  */
-export async function processQuestion(questionText) {
+export async function processQuestion(questionText, country = null, language = null) {
     // Validation de l'entree
     if (!questionText || typeof questionText !== 'string') {
         throw new Error('Le texte de la question est requis');
@@ -350,40 +347,50 @@ export async function processQuestion(questionText) {
         } else {
             // 4. Trouve le meilleur match
             const match = findBestClusterMatch(embedding, clusters);
-            console.log(`Meilleur match: ${match.similarity.toFixed(4)}`);
+            
+            if (match.cluster) {
+                console.log(`Meilleur match: ${match.similarity.toFixed(4)}`);
+                // 5. Applique le seuil
+                if (match.similarity >= ClusteringConfig.SIMILARITY_THRESHOLD) {
+                    // Associe au cluster existant
+                    cluster = match.cluster;
+                    similarity = match.similarity;
 
-            // 5. Applique le seuil
-            if (match.similarity >= ClusteringConfig.SIMILARITY_THRESHOLD) {
-                // Associe au cluster existant
-                cluster = match.cluster;
-                similarity = match.similarity;
+                    // Met a jour le centroide
+                    await updateClusterCentroid(
+                        cluster.id,
+                        embedding,
+                        cluster.questionCount,
+                        cluster.centroid
+                    );
 
-                // Met a jour le centroide
-                await updateClusterCentroid(
-                    cluster.id,
-                    embedding,
-                    cluster.questionCount,
-                    cluster.centroid
-                );
-
-                console.log(`Question associee au cluster ${cluster.id} (similarite: ${similarity.toFixed(4)})`);
+                    console.log(`Question associee au cluster ${cluster.id} (similarite: ${similarity.toFixed(4)})`);
+                } else {
+                    // Cree un nouveau cluster
+                    console.log(
+                        `Similarite insuffisante (${match.similarity.toFixed(4)} < ${ClusteringConfig.SIMILARITY_THRESHOLD}), nouveau cluster`
+                    );
+                    cluster = await createNewCluster(trimmedText, embedding);
+                    isNewCluster = true;
+                    similarity = 1;
+                }
             } else {
-                // Cree un nouveau cluster
-                console.log(
-                    `Similarite insuffisante (${match.similarity.toFixed(4)} < ${ClusteringConfig.SIMILARITY_THRESHOLD}), nouveau cluster`
-                );
+                // Aucun match trouvé (cas rare mais possible)
+                console.log('Aucun match trouvé, création nouveau cluster');
                 cluster = await createNewCluster(trimmedText, embedding);
                 isNewCluster = true;
                 similarity = 1;
             }
         }
 
-        // 6. Sauvegarde la question
+        // 6. Sauvegarde la question AVEC PAYS ET LANGUE
         const savedQuestion = await saveQuestion(
             trimmedText,
             normalizedText,
             cluster.id,
-            similarity
+            similarity,
+            country,
+            language
         );
 
         // 7. Sauvegarde l'embedding
