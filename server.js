@@ -12,8 +12,22 @@ import analysitRoutes from './routes/analysisRoutes.js';
 
 // Import du controller Telegram pour le démarrage
 import telegramBotController from './controllers/telegramController.js';
+// import factCheckRoutes from './routes/analysisRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
+import clusteringRoutes from './routes/clusteringRoutes.js';
+import { preloadModel } from './services/nlpService.js';
+import { validateConfig } from './services/clusteringConfig.js';
+//import factCheckRoutes from './routes/factCheckRoutes.js';
 
 dotenv.config();
+
+// Valide la configuration du clustering au demarrage
+try {
+    validateConfig();
+} catch (error) {
+    console.error('Erreur de configuration:', error.message);
+    process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,6 +49,10 @@ app.use('/api/dashboard', dashboardRoutes);
 // app.use('/api/fact-check', factCheckRoutes);
 app.use('/api/telegram', telegramRoutes); // Important pour le Webhook
 app.use('/api/analysis', analysitRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/clustering', clusteringRoutes);
+//Doublon avec openAI
+//app.use('/api/fact-check', factCheckRoutes);
 
 // Gestion globale des erreurs
 app.use((err, req, res, next) => {
@@ -63,4 +81,13 @@ app.listen(PORT, async () => {
   } catch (error) {
     console.error('❌ Échec du démarrage du service Telegram:', error);
   }
+});
+app.listen(PORT, async () => {
+  console.log(`Serveur demarre sur le port ${PORT}`);
+
+  // Precharge le modele NLP en arriere-plan
+  console.log('Prechargement du modele NLP...');
+  preloadModel()
+    .then(() => console.log('Modele NLP pret pour le clustering'))
+    .catch(err => console.error('Echec du prechargement NLP:', err.message));
 });

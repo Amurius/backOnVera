@@ -1,30 +1,33 @@
+/*
+ * ROUTES NON UTILISEES - Le frontend utilise chatRoutes.js
+ * Import commente dans server.js
+ * Conserve pour reference
+ */
+
+/*
 import express from 'express';
-import { 
-  analyzeImage, 
-  analyzeVideo, 
-  analyzeText, 
-  getOcrAnalyses, 
-  getVideoAnalyses 
+import {
+  analyzeImage,
+  analyzeVideo,
+  analyzeText,
+  getOcrAnalyses,
+  getVideoAnalyses
 } from '../controllers/analysisController.js';
 
-// 👇 CORRECTION IMPORTANTE : On utilise le bon nom 'verifyToken'
-import { verifyToken } from '../middlewares/auth.js';
-
-import upload from "../middlewares/upload.js";
-import { uploadAndProcessVideo } from "../middlewares/upload.js";
+import upload, { uploadVideo } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-// Routes protégées par le Token + Upload Fichier
-router.post('/ocr', verifyToken, upload.single('image'), analyzeImage);
+router.post('/ocr', upload.single('image'), analyzeImage);
 
-// Pour la vidéo, on utilise ton middleware spécial de traitement
-router.post('/video', verifyToken, uploadAndProcessVideo, analyzeVideo);
+// Pour la video, on envoie directement a Gemini
+router.post('/video', uploadVideo, analyzeVideo);
 
-router.post('/text', verifyToken, analyzeText);
+router.post('/text', analyzeText);
 
 // Historiques
-router.get('/ocr', verifyToken, getOcrAnalyses);
-router.get('/video', verifyToken, getVideoAnalyses);
+router.get('/ocr', getOcrAnalyses);
+router.get('/video', getVideoAnalyses);
 
 export default router;
+*/

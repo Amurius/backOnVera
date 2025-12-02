@@ -1,0 +1,32 @@
+# Exported from Render on 2025-11-28T14:58:11Z
+version: "1"
+projects:
+- name: VeraWeb
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: backOnVera
+      runtime: node
+      repo: https://github.com/Amurius/backOnVera
+      plan: starter
+      envVars:
+      - key: VERA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: JWT_EXPIRES_IN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PORT
+        sync: false
+      region: frankfurt
+      buildCommand: |
+        apt-get update
+        apt-get install -y yt-dlp
+        bun install
+      startCommand: bun run start
+      autoDeployTrigger: commit
