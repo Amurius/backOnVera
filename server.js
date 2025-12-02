@@ -38,7 +38,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     // Autorise n'importe quel localhost (4200, 63420, etc.)
-    if (origin.startsWith('http://localhost') || origin.startWith('https://front-on-vera.vercel.app')) {
+    if (origin.startsWith('http://localhost') || origin.startsWith('https://front-on-vera.vercel.app')) {
       return callback(null, true);
     }
     
