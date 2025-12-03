@@ -1,9 +1,52 @@
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { analyzeText, analyzeImage, analyzeVideo } from './analysisController.js';
-import { query } from '../db/config.js';
 import { processVideoBuffer } from '../middlewares/videoprocessor.js';
+import { processQuestion } from '../services/clusteringService.js';
+import { isDocumentType, extractTextFromDocument, SUPPORTED_DOCUMENT_TYPES } from '../services/documentExtractor.js';
 import fetch from 'node-fetch';
+
+// Limite de caractères pour l'API Vera
+const MAX_VERA_CONTENT_LENGTH = 50000;
+
+/**
+ * Découpe le texte en morceaux de taille maximale pour l'API Vera
+ */
+const splitTextIntoChunks = (text, maxLength = MAX_VERA_CONTENT_LENGTH) => {
+  if (!text || text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks = [];
+  let remainingText = text;
+
+  while (remainingText.length > 0) {
+    if (remainingText.length <= maxLength) {
+      chunks.push(remainingText);
+      break;
+    }
+
+    let chunk = remainingText.substring(0, maxLength);
+    const lastSentenceEnd = Math.max(
+      chunk.lastIndexOf('. '),
+      chunk.lastIndexOf('.\n'),
+      chunk.lastIndexOf('! '),
+      chunk.lastIndexOf('!\n'),
+      chunk.lastIndexOf('? '),
+      chunk.lastIndexOf('?\n'),
+      chunk.lastIndexOf('\n\n')
+    );
+
+    if (lastSentenceEnd > maxLength * 0.8) {
+      chunk = remainingText.substring(0, lastSentenceEnd + 1);
+    }
+
+    chunks.push(chunk.trim());
+    remainingText = remainingText.substring(chunk.length).trim();
+  }
+
+  return chunks;
+};
 
 class TelegramBotController {
   constructor() {
@@ -20,14 +63,13 @@ class TelegramBotController {
   // MIDDLEWARE
   // ==========================================
   setupMiddleware() {
-    // Middleware pour gérer userId
+    // Middleware pour extraire la langue de l'utilisateur Telegram
     this.bot.use(async (ctx, next) => {
       if (ctx.from) {
-        try {
-          ctx.state.userId = await this.getUserId(ctx.from.id, ctx.from.username);
-        } catch (error) {
-          console.error('Erreur middleware userId:', error);
-        }
+        // Extraction de la langue depuis Telegram (ex: "fr", "en", "es")
+        ctx.state.lang = ctx.from.language_code || 'xx';
+        // Pays par défaut (Telegram ne fournit pas le pays directement)
+        ctx.state.country = 'XX';
       }
       return next();
     });
@@ -45,13 +87,11 @@ class TelegramBotController {
   // CONFIGURATION DU MENU VISUEL
   // ==========================================
   async setBotCommands() {
-    // Cela affiche le bouton "Menu" à côté de la zone de saisie
+    // Affiche le bouton "Menu" à côté de la zone de saisie
     try {
       await this.bot.telegram.setMyCommands([
         { command: 'start', description: '🚀 Démarrer / Redémarrer' },
         { command: 'help', description: '❓ Guide d\'utilisation' },
-        { command: 'history_ocr', description: '📄 Mes analyses d\'images' },
-        { command: 'history_video', description: '🎬 Mes analyses vidéos' },
       ]);
     } catch (error) {
       console.error('Erreur lors de la configuration des commandes:', error);
@@ -65,24 +105,11 @@ class TelegramBotController {
     // 1. Commandes principales
     this.bot.command('start', (ctx) => this.handleStart(ctx));
     this.bot.command('help', (ctx) => this.handleHelp(ctx));
-    this.bot.command('history_ocr', (ctx) => this.handleHistoryOcr(ctx));
-    this.bot.command('history_video', (ctx) => this.handleHistoryVideo(ctx));
 
     // 2. Gestion des CLICS sur les boutons (Actions)
-    // Cela permet de réagir quand l'utilisateur clique sur le menu de bienvenue
     this.bot.action('btn_help', (ctx) => {
         ctx.answerCbQuery(); // Stop le chargement du bouton
         return this.handleHelp(ctx);
-    });
-    
-    this.bot.action('btn_hist_ocr', (ctx) => {
-        ctx.answerCbQuery();
-        return this.handleHistoryOcr(ctx);
-    });
-
-    this.bot.action('btn_hist_video', (ctx) => {
-        ctx.answerCbQuery();
-        return this.handleHistoryVideo(ctx);
     });
 
     // 3. Gestion des fichiers et messages
@@ -95,31 +122,8 @@ class TelegramBotController {
   // ==========================================
   // HELPERS
   // ==========================================
-  async getUserId(telegramId, username) {
-    try {
-      let result = await query(
-        'SELECT id FROM users WHERE telegram_id = $1',
-        [telegramId]
-      );
-
-      if (result.rows.length > 0) {
-        return result.rows[0].id;
-      }
-
-      result = await query(
-        'INSERT INTO users (telegram_id, username) VALUES ($1, $2) RETURNING id',
-        [telegramId, username || `telegram_${telegramId}`]
-      );
-
-      return result.rows[0].id;
-    } catch (error) {
-      console.error('Erreur getUserId:', error);
-      throw error;
-    }
-  }
-
-  createMockRequest(userId, body = {}, file = null, frames = null, audio = null) {
-    return { userId, body, file, frames, audio };
+  createMockRequest(body = {}, file = null, frames = null, audio = null) {
+    return { body, file, frames, audio };
   }
 
   createMockResponse(ctx) {
@@ -133,13 +137,11 @@ class TelegramBotController {
         if (data.veraAnalysis) {
           await ctx.reply(`✅ <b>Analyse Vera terminée</b>\n\n${data.veraAnalysis}`, { parse_mode: 'HTML' });
         } else if (data.extractedText) {
-          await ctx.reply('📄 <b>Texte extrait de l\'image</b>\n\nEnvoi à Vera pour vérification...');
+          await ctx.reply('📄 <b>Envoi à Vera pour vérification...</b>');
           await this.sendToVera(ctx, data.extractedText);
         } else if (data.videoAnalysis) {
-          await ctx.reply('🎬 <b>Vidéo analysée</b>\n\nEnvoi à Vera pour vérification...');
+          await ctx.reply('🎬 <b>Envoi à Vera pour vérification...</b>');
           await this.sendToVera(ctx, data.videoAnalysis);
-        } else if (data.analyses) {
-          await this.formatHistory(ctx, data.analyses);
         } else {
           await ctx.reply(`✅ ${data.message}`);
         }
@@ -149,7 +151,7 @@ class TelegramBotController {
 
   async sendToVera(ctx, text) {
     try {
-      const mockReq = this.createMockRequest(ctx.state.userId, { text });
+      const mockReq = this.createMockRequest({ text });
       const mockRes = this.createMockResponse(ctx);
       await analyzeText(mockReq, mockRes);
     } catch (error) {
@@ -158,30 +160,15 @@ class TelegramBotController {
     }
   }
 
-  async formatHistory(ctx, analyses) {
-    if (!analyses || analyses.length === 0) {
-      return ctx.reply('ℹ️ Aucune analyse trouvée dans votre historique.');
-    }
-    let message = `📊 <b>Historique de vos analyses (${analyses.length} dernières)</b>\n\n`;
-    analyses.slice(0, 5).forEach((analysis, index) => {
-      const date = new Date(analysis.created_at).toLocaleString('fr-FR');
-      const preview = analysis.extracted_text 
-        ? analysis.extracted_text.substring(0, 80) 
-        : analysis.video_analysis?.substring(0, 80) || 'N/A';
-      message += `${index + 1}. <b>${date}</b>\n   ${preview}...\n\n`;
-    });
-    await ctx.reply(message, { parse_mode: 'HTML' });
-  }
-
   // ==========================================
   // COMMAND HANDLERS (Optimisés UX)
   // ==========================================
-  
+
   async handleStart(ctx) {
     const welcomeMessage = `
 👋 <b>Bonjour ${ctx.from.first_name || 'cher utilisateur'} !</b>
 
-Bienvenue sur <b>Vera.</b>   Je suis prêt à analyser tous vos contenus.
+Bienvenue sur <b>Vera.</b> Je suis prêt à analyser tous vos contenus.
 
 🚀 <b>Comment ça marche ?</b>
 
@@ -193,16 +180,12 @@ Envoyez-moi simplement :
 
 🎥 <b>Une vidéo</b> pour une analyse visuelle,
 
-<b> Que souhaitez-vous faire ?</b>
+<b>Que souhaitez-vous faire ?</b>
     `;
 
     // Clavier Interactif (Boutons)
     const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('❓ Comment m\'utiliser ? ❓'  , 'btn_help')],
-        [
-            Markup.button.callback('📄 Historique Images', 'btn_hist_ocr'),
-            Markup.button.callback('🎬 Historique Vidéos', 'btn_hist_video')
-        ]
+        [Markup.button.callback('❓ Comment m\'utiliser ? ❓', 'btn_help')]
     ]);
 
     return ctx.reply(welcomeMessage, { parse_mode: 'HTML', ...keyboard });
@@ -212,7 +195,7 @@ Envoyez-moi simplement :
     const helpMessage = `
 📖 <b>Guide d'utilisation Rapide</b>
 
-1️⃣ <b>Analyse de Texte :</b> 
+1️⃣ <b>Analyse de Texte :</b>
 Écrivez simplement votre message dans le chat et envoyez-le.
 
 2️⃣ <b>Analyse d'Image (OCR) :</b>
@@ -226,41 +209,23 @@ Cliquez sur le trombone 📎 > Vidéo > Sélectionnez (Max 20MB).
     return ctx.reply(helpMessage, { parse_mode: 'HTML' });
   }
 
-  async handleHistoryOcr(ctx) {
-    try {
-      await ctx.reply('🔍 <i>Recherche de votre historique d\'images...</i>', { parse_mode: 'HTML' });
-      const result = await query(
-        'SELECT * FROM ocr_analyses WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5',
-        [ctx.state.userId]
-      );
-      await this.formatHistory(ctx, result.rows);
-    } catch (error) {
-      console.error('Erreur history OCR:', error);
-      await ctx.reply('❌ Erreur historique images.');
-    }
-  }
-
-  async handleHistoryVideo(ctx) {
-    try {
-      await ctx.reply('🔍 <i>Recherche de votre historique vidéo...</i>', { parse_mode: 'HTML' });
-      const result = await query(
-        'SELECT * FROM video_analyses WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5',
-        [ctx.state.userId]
-      );
-      await this.formatHistory(ctx, result.rows);
-    } catch (error) {
-      console.error('Erreur history vidéo:', error);
-      await ctx.reply('❌ Erreur historique vidéo.');
-    }
-  }
-
   // ==========================================
   // MESSAGE HANDLERS
   // ==========================================
   async handleTextMessage(ctx) {
     try {
+      const textToAnalyze = ctx.message.text;
+      const country = ctx.state.country;
+      const lang = ctx.state.lang;
+
       await ctx.reply('⏳ <b>Analyse en cours avec Vera...</b>', { parse_mode: 'HTML' });
-      const mockReq = this.createMockRequest(ctx.state.userId, { text: ctx.message.text });
+
+      // Enregistrement de la question avec pays et langue (clustering)
+      processQuestion(textToAnalyze, country, lang)
+        .then(() => console.log('✅ Question Telegram traitée (Clustering + DB)'))
+        .catch(err => console.error('⚠️ Erreur traitement question Telegram:', err.message));
+
+      const mockReq = this.createMockRequest({ text: textToAnalyze });
       const mockRes = this.createMockResponse(ctx);
       await analyzeText(mockReq, mockRes);
     } catch (error) {
@@ -271,15 +236,31 @@ Cliquez sur le trombone 📎 > Vidéo > Sélectionnez (Max 20MB).
 
   async handlePhoto(ctx) {
     try {
+      const country = ctx.state.country;
+      const lang = ctx.state.lang;
+      // Récupération de la caption (texte envoyé avec l'image)
+      const userQuestion = ctx.message.caption || '';
+
       await ctx.reply('⏳ <b>Téléchargement...</b>', { parse_mode: 'HTML' });
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
       const fileLink = await ctx.telegram.getFileLink(photo.file_id);
       const response = await fetch(fileLink.href);
       const buffer = Buffer.from(await response.arrayBuffer());
-      
+
       await ctx.reply('🖼️ <b>OCR en cours...</b>', { parse_mode: 'HTML' });
-      
-      const mockReq = this.createMockRequest(ctx.state.userId, {}, { buffer, mimetype: 'image/jpeg' });
+
+      // Enregistrement de la question utilisateur si présente, sinon de l'analyse
+      if (userQuestion.trim()) {
+        processQuestion(userQuestion.trim(), country, lang)
+          .then(() => console.log('✅ Question image Telegram traitée'))
+          .catch(err => console.error('⚠️ Erreur stats image Telegram:', err.message));
+      } else {
+        processQuestion('Analyse image Telegram', country, lang)
+          .catch(err => console.error('⚠️ Erreur stats image Telegram:', err.message));
+      }
+
+      // Passage de la question utilisateur dans le body pour le traitement
+      const mockReq = this.createMockRequest({ userQuestion: userQuestion.trim() }, { buffer, mimetype: 'image/jpeg' });
       const mockRes = this.createMockResponse(ctx);
       await analyzeImage(mockReq, mockRes);
     } catch (error) {
@@ -291,28 +272,46 @@ Cliquez sur le trombone 📎 > Vidéo > Sélectionnez (Max 20MB).
   async handleVideo(ctx) {
     try {
       const video = ctx.message.video;
+      const country = ctx.state.country;
+      const lang = ctx.state.lang;
+      // Récupération de la caption (texte envoyé avec la vidéo)
+      const userQuestion = ctx.message.caption || '';
+
       if (video.file_size > 20 * 1024 * 1024) {
         return ctx.reply('⚠️ Vidéo trop volumineuse (max 20MB).');
       }
-      
+
       await ctx.reply('⏳ <b>Téléchargement...</b>', { parse_mode: 'HTML' });
       const fileLink = await ctx.telegram.getFileLink(video.file_id);
       const response = await fetch(fileLink.href);
       const buffer = Buffer.from(await response.arrayBuffer());
-      
+
       await ctx.reply('🎬 <b>Analyse vidéo en cours...</b>', { parse_mode: 'HTML' });
-      
-      const mockReq = this.createMockRequest(ctx.state.userId);
-      mockReq.file = { 
-        buffer, 
-        mimetype: video.mime_type || 'video/mp4', 
-        originalname: `tg_vid_${Date.now()}.mp4` 
+
+      // Enregistrement de la question utilisateur si présente, sinon de l'analyse
+      if (userQuestion.trim()) {
+        processQuestion(userQuestion.trim(), country, lang)
+          .then(() => console.log('✅ Question vidéo Telegram traitée'))
+          .catch(err => console.error('⚠️ Erreur stats vidéo Telegram:', err.message));
+      } else {
+        processQuestion('Analyse vidéo Telegram', country, lang)
+          .catch(err => console.error('⚠️ Erreur stats vidéo Telegram:', err.message));
+      }
+
+      // Passage de la question utilisateur dans le body
+      const mockReq = this.createMockRequest({ userQuestion: userQuestion.trim() });
+      mockReq.file = {
+        buffer,
+        mimetype: video.mime_type || 'video/mp4',
+        originalname: `tg_vid_${Date.now()}.mp4`
       };
-      
+
       await processVideoBuffer(mockReq, buffer);
-      
-      if (!mockReq.frames?.length) return ctx.reply('❌ Erreur extraction frames.');
-      
+
+      if (!mockReq.frames || !mockReq.frames.length) {
+        return ctx.reply('❌ Erreur extraction frames.');
+      }
+
       const mockRes = this.createMockResponse(ctx);
       await analyzeVideo(mockReq, mockRes);
     } catch (error) {
@@ -323,23 +322,128 @@ Cliquez sur le trombone 📎 > Vidéo > Sélectionnez (Max 20MB).
 
   async handleDocument(ctx) {
     const doc = ctx.message.document;
-    if (doc.mime_type && doc.mime_type.startsWith('image/')) {
+    const mimeType = doc.mime_type || '';
+    const country = ctx.state.country;
+    const lang = ctx.state.lang;
+    const userQuestion = ctx.message.caption || '';
+
+    // Cas 1 : Image envoyée comme document
+    if (mimeType.startsWith('image/')) {
       try {
         await ctx.reply('⏳ <b>Téléchargement...</b>', { parse_mode: 'HTML' });
         const fileLink = await ctx.telegram.getFileLink(doc.file_id);
         const response = await fetch(fileLink.href);
         const buffer = Buffer.from(await response.arrayBuffer());
-        
+
         await ctx.reply('🖼️ <b>OCR en cours...</b>', { parse_mode: 'HTML' });
-        const mockReq = this.createMockRequest(ctx.state.userId, {}, { buffer, mimetype: doc.mime_type });
+
+        // Enregistrement de la question utilisateur si présente, sinon de l'analyse
+        if (userQuestion.trim()) {
+          processQuestion(userQuestion.trim(), country, lang)
+            .then(() => console.log('✅ Question document Telegram traitée'))
+            .catch(err => console.error('⚠️ Erreur stats document Telegram:', err.message));
+        } else {
+          processQuestion('Analyse document image Telegram', country, lang)
+            .catch(err => console.error('⚠️ Erreur stats document Telegram:', err.message));
+        }
+
+        const mockReq = this.createMockRequest({ userQuestion: userQuestion.trim() }, { buffer, mimetype: mimeType });
         const mockRes = this.createMockResponse(ctx);
         await analyzeImage(mockReq, mockRes);
       } catch (error) {
-        console.error('Erreur doc:', error);
-        await ctx.reply('❌ Erreur document');
+        console.error('Erreur doc image:', error);
+        await ctx.reply('❌ Erreur lors de l\'analyse de l\'image');
       }
-    } else {
-      await ctx.reply('⚠️ Envoyez une image (JPG, PNG) ou une vidéo.');
+    }
+    // Cas 2 : Document texte (PDF, Word, ODT, etc.)
+    else if (isDocumentType(mimeType)) {
+      try {
+        await ctx.reply('⏳ <b>Téléchargement du document...</b>', { parse_mode: 'HTML' });
+        const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+        const response = await fetch(fileLink.href);
+        const buffer = Buffer.from(await response.arrayBuffer());
+
+        await ctx.reply('📄 <b>Extraction du texte en cours...</b>', { parse_mode: 'HTML' });
+
+        // Extraction du texte du document
+        const extractionResult = await extractTextFromDocument(buffer, mimeType);
+
+        if (!extractionResult.success) {
+          await ctx.reply(`❌ Erreur: ${extractionResult.error || 'Impossible d\'extraire le texte du document'}`);
+          return;
+        }
+
+        const extractedText = extractionResult.text;
+
+        if (!extractedText || extractedText.trim().length === 0) {
+          await ctx.reply('⚠️ Aucun texte trouvé dans le document.');
+          return;
+        }
+
+        // Enregistrement de la question utilisateur si présente
+        if (userQuestion.trim()) {
+          processQuestion(userQuestion.trim(), country, lang)
+            .then(() => console.log('✅ Question document texte Telegram traitée'))
+            .catch(err => console.error('⚠️ Erreur stats document Telegram:', err.message));
+        } else {
+          // Enregistrer un résumé du document pour les stats
+          const docSummary = extractedText.substring(0, 200).replace(/\s+/g, ' ').trim();
+          processQuestion(`Document: ${docSummary}`, country, lang)
+            .catch(err => console.error('⚠️ Erreur stats document Telegram:', err.message));
+        }
+
+        await ctx.reply('🔍 <b>Envoi à Vera pour vérification...</b>', { parse_mode: 'HTML' });
+
+        // Découper le texte en morceaux pour respecter les limites de l'API
+        const textChunks = splitTextIntoChunks(extractedText);
+        const totalChunks = textChunks.length;
+
+        // Envoyer chaque morceau à Vera
+        for (let i = 0; i < totalChunks; i++) {
+          const chunk = textChunks[i];
+          const isFirstChunk = i === 0;
+          const isLastChunk = i === totalChunks - 1;
+
+          // Indiquer la progression si plusieurs morceaux
+          if (totalChunks > 1) {
+            await ctx.reply(`📄 <b>Partie ${i + 1}/${totalChunks}</b>`, { parse_mode: 'HTML' });
+          }
+
+          // Construction de la requête Vera
+          let veraQuery = '';
+          if (isFirstChunk) {
+            if (userQuestion.trim()) {
+              veraQuery = `Question utilisateur : "${userQuestion.trim()}"\n\nContenu du document :\n${chunk}`;
+            } else {
+              veraQuery = `Peux-tu vérifier les informations contenues dans ce document :\n\n${chunk}`;
+            }
+            if (totalChunks > 1) {
+              veraQuery += `\n\n[Suite du contenu à venir - Partie 1/${totalChunks}]`;
+            }
+          } else {
+            veraQuery = `Suite du document (Partie ${i + 1}/${totalChunks}) :\n\n${chunk}`;
+            if (!isLastChunk) {
+              veraQuery += `\n\n[Suite à venir]`;
+            } else {
+              veraQuery += `\n\n[Fin du document - Merci de fournir une analyse complète]`;
+            }
+          }
+
+          // Envoi à Vera
+          const mockReq = this.createMockRequest({ text: veraQuery });
+          const mockRes = this.createMockResponse(ctx);
+          await analyzeText(mockReq, mockRes);
+        }
+
+      } catch (error) {
+        console.error('Erreur doc texte:', error);
+        await ctx.reply('❌ Erreur lors de l\'analyse du document');
+      }
+    }
+    // Cas 3 : Format non supporté
+    else {
+      const supportedFormats = Object.values(SUPPORTED_DOCUMENT_TYPES).join(', ').toUpperCase();
+      await ctx.reply(`⚠️ Format non supporté.\n\nFormats acceptés :\n📷 Images (JPG, PNG)\n🎥 Vidéos (MP4, max 20MB)\n📄 Documents (${supportedFormats})`);
     }
   }
 

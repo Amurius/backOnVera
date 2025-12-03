@@ -15,6 +15,109 @@ const openai = new OpenAI({
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
+// Limite de caractères pour l'API Vera (environ 50KB pour éviter l'erreur 413)
+const MAX_VERA_CONTENT_LENGTH = 50000;
+const VERA_API_URL = 'https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat';
+
+/**
+ * Découpe le texte en morceaux de taille maximale pour l'API Vera
+ */
+const splitTextIntoChunks = (text, maxLength = MAX_VERA_CONTENT_LENGTH) => {
+  if (!text || text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks = [];
+  let remainingText = text;
+
+  while (remainingText.length > 0) {
+    if (remainingText.length <= maxLength) {
+      chunks.push(remainingText);
+      break;
+    }
+
+    let chunk = remainingText.substring(0, maxLength);
+    const lastSentenceEnd = Math.max(
+      chunk.lastIndexOf('. '),
+      chunk.lastIndexOf('.\n'),
+      chunk.lastIndexOf('! '),
+      chunk.lastIndexOf('!\n'),
+      chunk.lastIndexOf('? '),
+      chunk.lastIndexOf('?\n'),
+      chunk.lastIndexOf('\n\n')
+    );
+
+    if (lastSentenceEnd > maxLength * 0.8) {
+      chunk = remainingText.substring(0, lastSentenceEnd + 1);
+    }
+
+    chunks.push(chunk.trim());
+    remainingText = remainingText.substring(chunk.length).trim();
+  }
+
+  return chunks;
+};
+
+/**
+ * Envoie le contenu à Vera en plusieurs requêtes si nécessaire
+ * et combine les réponses
+ */
+const sendToVeraWithChunking = async (content, userQuestion, analysisLabel, userId) => {
+  const chunks = splitTextIntoChunks(content);
+  const totalChunks = chunks.length;
+  let fullAnalysis = '';
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunk = chunks[i];
+    const isFirstChunk = i === 0;
+    const isLastChunk = i === totalChunks - 1;
+
+    let veraQuery = '';
+    if (isFirstChunk) {
+      if (userQuestion && userQuestion.trim()) {
+        veraQuery = `Question utilisateur : "${userQuestion.trim()}"\n\n${analysisLabel} :\n${chunk}`;
+      } else {
+        veraQuery = `Peux-tu verifier les informations suivantes :\n\n${chunk}`;
+      }
+      if (totalChunks > 1) {
+        veraQuery += `\n\n[Suite du contenu à venir - Partie 1/${totalChunks}]`;
+      }
+    } else {
+      veraQuery = `Suite du contenu (Partie ${i + 1}/${totalChunks}) :\n\n${chunk}`;
+      if (!isLastChunk) {
+        veraQuery += `\n\n[Suite à venir]`;
+      } else {
+        veraQuery += `\n\n[Fin du contenu - Merci de fournir une analyse complète]`;
+      }
+    }
+
+    const veraResponse = await fetch(VERA_API_URL, {
+      method: 'POST',
+      headers: {
+        'X-API-Key': process.env.VERA_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId: userId,
+        query: veraQuery
+      })
+    });
+
+    if (!veraResponse.ok) {
+      throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+    }
+
+    const chunkAnalysis = await veraResponse.text();
+    if (totalChunks > 1) {
+      fullAnalysis += `\n\n--- Partie ${i + 1}/${totalChunks} ---\n\n${chunkAnalysis}`;
+    } else {
+      fullAnalysis = chunkAnalysis;
+    }
+  }
+
+  return fullAnalysis;
+};
+
 // Recupere l'ID de l'utilisateur anonyme depuis la BDD
 const getAnonymousUserId = async () => {
   const result = await query(
@@ -37,7 +140,7 @@ export const analyzeImage = async (req, res) => {
     }
 
     const userId = req.userId ?? await getAnonymousUserId();
-    // CORRECTION BUG : On definit bien base64Image
+    const userQuestion = req.body?.userQuestion || '';
     const base64Image = req.file.buffer.toString("base64");
 
     const response = await openai.responses.create({
@@ -66,9 +169,18 @@ export const analyzeImage = async (req, res) => {
       [userId, extractedText]
     );
 
+    // Envoi à Vera avec gestion automatique du chunking si le texte est trop long
+    const veraAnalysis = await sendToVeraWithChunking(
+      extractedText,
+      userQuestion,
+      'Analyse image',
+      userId
+    );
+
     res.json({
       message: 'Analyse OCR terminee',
-      extractedText
+      extractedText,
+      veraAnalysis
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse OCR:', error);
@@ -86,6 +198,7 @@ export const analyzeVideo = async (req, res) => {
     }
 
     const userId = req.userId ?? await getAnonymousUserId();
+    const userQuestion = req.body?.userQuestion || '';
     const mimeType = req.file.mimetype;
 
     // Sauvegarder temporairement le fichier pour l'upload
@@ -134,32 +247,22 @@ Retourne uniquement ces informations de maniere structuree, sans introduction, s
       }
     ]);
 
-    const videoAnalysis = "Peux-tu verifier les informations contenues dans l'analyse de video suivante :\n\n" + geminiResult.response.text();
+    const videoContent = geminiResult.response.text();
 
     // Supprimer le fichier de Gemini apres analyse
     await fileManager.deleteFile(file.name);
 
-    const veraResponse = await fetch('https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat', {
-      method: 'POST',
-      headers: {
-        'X-API-Key': process.env.VERA_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        userId: userId,
-        query: videoAnalysis
-      })
-    });
-
-    if (!veraResponse.ok) {
-      throw new Error(`Erreur API Vera: ${veraResponse.status}`);
-    }
-
-    const veraAnalysis = await veraResponse.text();
+    // Envoi à Vera avec gestion automatique du chunking si le texte est trop long
+    const veraAnalysis = await sendToVeraWithChunking(
+      videoContent,
+      userQuestion,
+      'Analyse vidéo',
+      userId
+    );
 
     await query(
       'INSERT INTO video_analyses (user_id, video_analysis) VALUES ($1, $2)',
-      [userId, videoAnalysis]
+      [userId, videoContent]
     );
 
     res.json({
@@ -185,27 +288,54 @@ export const analyzeText = async (req, res) => {
       return res.status(422).json({ message: 'Texte requis' });
     }
 
-    const veraResponse = await fetch('https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat', {
-      method: 'POST',
-      headers: {
-        'X-API-Key': process.env.VERA_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        userId: userId,
-        query: text
-      })
-    });
+    // Utiliser le chunking pour gérer les textes longs
+    const chunks = splitTextIntoChunks(text);
+    const totalChunks = chunks.length;
+    let fullVeraAnalysis = '';
 
-    if (!veraResponse.ok) {
-      throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = chunks[i];
+      const isFirstChunk = i === 0;
+      const isLastChunk = i === totalChunks - 1;
+
+      let veraQuery = chunk;
+      if (totalChunks > 1) {
+        if (isFirstChunk) {
+          veraQuery = `${chunk}\n\n[Suite du contenu à venir - Partie 1/${totalChunks}]`;
+        } else if (!isLastChunk) {
+          veraQuery = `Suite du contenu (Partie ${i + 1}/${totalChunks}) :\n\n${chunk}\n\n[Suite à venir]`;
+        } else {
+          veraQuery = `Suite du contenu (Partie ${i + 1}/${totalChunks}) :\n\n${chunk}\n\n[Fin du contenu]`;
+        }
+      }
+
+      const veraResponse = await fetch(VERA_API_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': process.env.VERA_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: userId,
+          query: veraQuery
+        })
+      });
+
+      if (!veraResponse.ok) {
+        throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+      }
+
+      const chunkAnalysis = await veraResponse.text();
+      if (totalChunks > 1) {
+        fullVeraAnalysis += `\n\n--- Partie ${i + 1}/${totalChunks} ---\n\n${chunkAnalysis}`;
+      } else {
+        fullVeraAnalysis = chunkAnalysis;
+      }
     }
-
-    const veraAnalysis = await veraResponse.text();
 
     res.json({
       message: 'Analyse de texte terminee',
-      veraAnalysis
+      veraAnalysis: fullVeraAnalysis.trim()
     });
   } catch (error) {
     console.error('Erreur lors de l\'analyse de texte:', error);

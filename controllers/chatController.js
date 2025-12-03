@@ -4,6 +4,7 @@ import { GoogleAIFileManager } from '@google/generative-ai/server';
 import { fetchTranscript } from 'youtube-transcript-plus';
 import { query } from '../db/config.js';
 import { processQuestion } from '../services/clusteringService.js';
+import { isDocumentType, extractTextFromDocument } from '../services/documentExtractor.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -18,6 +19,56 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
 const VERA_API_URL = 'https://feat-api-partner---api-ksrn3vjgma-od.a.run.app/api/v1/chat';
+
+// Limite de caractères pour l'API Vera (environ 50KB pour éviter l'erreur 413)
+const MAX_VERA_CONTENT_LENGTH = 50000;
+
+/**
+ * Découpe le texte en morceaux de taille maximale pour l'API Vera
+ * Essaie de couper aux fins de phrases pour préserver le sens
+ * @param {string} text - Texte à découper
+ * @param {number} maxLength - Taille maximale de chaque morceau
+ * @returns {string[]} - Tableau de morceaux de texte
+ */
+const splitTextIntoChunks = (text, maxLength = MAX_VERA_CONTENT_LENGTH) => {
+  if (!text || text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks = [];
+  let remainingText = text;
+
+  while (remainingText.length > 0) {
+    if (remainingText.length <= maxLength) {
+      chunks.push(remainingText);
+      break;
+    }
+
+    // Prendre un morceau de taille maximale
+    let chunk = remainingText.substring(0, maxLength);
+
+    // Essayer de couper à la fin d'une phrase
+    const lastSentenceEnd = Math.max(
+      chunk.lastIndexOf('. '),
+      chunk.lastIndexOf('.\n'),
+      chunk.lastIndexOf('! '),
+      chunk.lastIndexOf('!\n'),
+      chunk.lastIndexOf('? '),
+      chunk.lastIndexOf('?\n'),
+      chunk.lastIndexOf('\n')
+    );
+
+    // Si on trouve une fin de phrase dans les 20% derniers du chunk, couper là
+    if (lastSentenceEnd > maxLength * 0.8) {
+      chunk = remainingText.substring(0, lastSentenceEnd + 1);
+    }
+
+    chunks.push(chunk.trim());
+    remainingText = remainingText.substring(chunk.length).trim();
+  }
+
+  return chunks;
+};
 
 // Recupere l'ID de l'utilisateur anonyme depuis la BDD
 const getAnonymousUserId = async () => {
@@ -109,9 +160,9 @@ const fetchTranscriptWithYtDlp = (videoId) => {
 
 const sendSSE = (res, data) => {
   if (typeof data === 'string') {
-    res.write(`data: ${JSON.stringify({ content: data })}\n\n`);
+    res.write(`data: ${JSON.stringify({ content: data })}\n`);
   } else {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    res.write(`data: ${JSON.stringify(data)}\n`);
   }
 };
 
@@ -144,7 +195,7 @@ export const streamChat = async (req, res) => {
 
     if (!textToProcess) {
       sendSSE(res, { error: 'Contenu requis' });
-      res.write('data: [DONE]\n\n');
+      res.write('data: [DONE]\n');
       return res.end();
     }
 
@@ -214,13 +265,13 @@ export const streamChat = async (req, res) => {
       [dbUserId, 'assistant', veraAnalysis, 'text']
     );
 
-    res.write('data: [DONE]\n\n');
+    res.write('data: [DONE]\n');
     res.end();
 
   } catch (error) {
     console.error('Erreur chat stream:', error);
     sendSSE(res, { error: error.message || 'Une erreur est survenue' });
-    res.write('data: [DONE]\n\n');
+    res.write('data: [DONE]\n');
     res.end();
   }
 };
@@ -244,32 +295,44 @@ export const streamChatFile = async (req, res) => {
   try {
     if (!req.file) {
       sendSSE(res, { error: 'Aucun fichier fourni' });
-      res.write('data: [DONE]\n\n');
+      res.write('data: [DONE]\n');
       return res.end();
     }
 
-    const { country, lang } = req.body;
+    const { country, lang, userQuestion } = req.body;
     const dbUserId = await getAnonymousUserId();
     const fileType = req.body.type || 'file';
     const mimeType = req.file.mimetype;
     const isVideo = mimeType.startsWith('video/');
     const isImage = mimeType.startsWith('image/');
+    const isDocument = isDocumentType(mimeType);
 
     let extractedContent = '';
 
-    // Ici on garde l'insert manuel juste pour logger le nom du fichier (sans cluster, c'est normal)
+    // Enregistrement de la question utilisateur si présente, sinon du fichier
+    const questionToLog = userQuestion && userQuestion.trim()
+      ? userQuestion.trim()
+      : `Fichier: ${req.file.originalname}`;
+
     try {
-        await query(
-          `INSERT INTO user_questions 
-           (question_text, normalized_text, country, language, created_at) 
-           VALUES ($1, $2, $3, $4, NOW())`,
-          [
-            `Fichier: ${req.file.originalname}`, 
-            `fichier: ${req.file.originalname.toLowerCase()}`, 
-            country || 'XX', 
-            lang || 'xx'
-          ]
-        );
+        // Si une question utilisateur est présente, on la traite pour le clustering
+        if (userQuestion && userQuestion.trim()) {
+          await processQuestion(userQuestion.trim(), country || 'XX', lang || 'xx');
+          console.log(`Question utilisateur clustérisée: ${userQuestion.trim()}`);
+        } else {
+          // Sinon on log juste le fichier
+          await query(
+            `INSERT INTO user_questions
+             (question_text, normalized_text, country, language, created_at)
+             VALUES ($1, $2, $3, $4, NOW())`,
+            [
+              questionToLog,
+              questionToLog.toLowerCase(),
+              country || 'XX',
+              lang || 'xx'
+            ]
+          );
+        }
     } catch(e) { console.error("Erreur stats fichier", e); }
 
     await query(
@@ -277,7 +340,7 @@ export const streamChatFile = async (req, res) => {
       [dbUserId, 'user', isVideo ? 'Video envoyee' : 'Fichier envoye', fileType, req.file.originalname]
     );
 
-    sendSSE(res, 'Analyse du fichier en cours...\n\n');
+    sendSSE(res, 'Analyse du fichier en cours...\n');
 
     if (isImage) {
       const base64Image = req.file.buffer.toString('base64');
@@ -357,7 +420,7 @@ export const streamChatFile = async (req, res) => {
         throw new Error('Le traitement de la video a echoue');
       }
 
-      sendSSE(res, '\n\nExtraction des informations...\n\n');
+      sendSSE(res, '\nExtraction des informations...\n');
 
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
@@ -393,41 +456,113 @@ export const streamChatFile = async (req, res) => {
       await fileManager.deleteFile(file.name);
       geminiFileName = null;
 
+    } else if (isDocument) {
+      // Extraction de texte depuis un document (PDF, Word, ODT, etc.)
+      sendSSE(res, 'Extraction du texte du document...\n');
+
+      const extractionResult = await extractTextFromDocument(req.file.buffer, mimeType);
+
+      if (!extractionResult.success) {
+        throw new Error(extractionResult.error || 'Erreur lors de l\'extraction du document');
+      }
+
+      extractedContent = extractionResult.text;
+
+      // Envoyer un résumé au clustering si pas de question utilisateur
+      if (!userQuestion || !userQuestion.trim()) {
+        try {
+          // Extraire les 200 premiers caractères comme résumé pour le clustering
+          const docSummary = extractedContent.substring(0, 200).replace(/\s+/g, ' ').trim();
+          await processQuestion(`Document: ${docSummary}`, country || 'XX', lang || 'xx');
+          console.log(`Document clustérisé (résumé): ${docSummary.substring(0, 50)}...`);
+        } catch (clusterError) {
+          console.error('Erreur clustering document:', clusterError);
+        }
+      }
     } else {
+      // Fichier texte brut
       extractedContent = req.file.buffer.toString('utf-8');
     }
 
-    sendSSE(res, 'Verification des informations...\n\n');
+    sendSSE(res, 'Verification des informations...\n');
 
-    const veraQuery = isVideo
-      ? `Peux-tu verifier les informations contenues dans l'analyse de video suivante :\n\n${extractedContent}`
-      : `Peux-tu verifier les informations suivantes :\n\n${extractedContent}`;
+    // Découper le contenu en morceaux pour respecter les limites de l'API
+    const contentChunks = splitTextIntoChunks(extractedContent);
+    const totalChunks = contentChunks.length;
 
-    const veraResponse = await fetch(VERA_API_URL, {
-      method: 'POST',
-      headers: {
-        'X-API-Key': process.env.VERA_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        userId: sessionId,
-        query: veraQuery
-      })
-    });
+    // Label du type de contenu
+    let analysisLabel = 'Analyse image';
+    if (isVideo) analysisLabel = 'Analyse vidéo';
+    else if (isDocument) analysisLabel = 'Contenu du document';
 
-    if (!veraResponse.ok) {
-      throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+    let fullVeraAnalysis = '';
+
+    // Envoyer chaque morceau à Vera
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = contentChunks[i];
+      const isFirstChunk = i === 0;
+      const isLastChunk = i === totalChunks - 1;
+
+      // Indiquer la progression si plusieurs morceaux
+      if (totalChunks > 1) {
+        sendSSE(res, `\n--- Partie ${i + 1}/${totalChunks} ---\n`);
+      }
+
+      // Construction de la requête Vera
+      let veraQuery = '';
+      if (isFirstChunk) {
+        // Premier morceau : inclure la question utilisateur et le contexte
+        if (userQuestion && userQuestion.trim()) {
+          veraQuery = `Question utilisateur : "${userQuestion.trim()}"\n${analysisLabel} :\n${chunk}`;
+        } else {
+          if (isVideo) {
+            veraQuery = `Peux-tu verifier les informations contenues dans l'analyse de video suivante :\n${chunk}`;
+          } else if (isDocument) {
+            veraQuery = `Peux-tu verifier les informations contenues dans ce document :\n${chunk}`;
+          } else {
+            veraQuery = `Peux-tu verifier les informations suivantes :\n${chunk}`;
+          }
+        }
+        if (totalChunks > 1) {
+          veraQuery += `\n[Suite du contenu à venir - Partie 1/${totalChunks}]`;
+        }
+      } else {
+        // Morceaux suivants : indiquer la continuation
+        veraQuery = `Suite du contenu précédent (Partie ${i + 1}/${totalChunks}) :\n${chunk}`;
+        if (!isLastChunk) {
+          veraQuery += `\n[Suite à venir]`;
+        } else {
+          veraQuery += `\n[Fin du contenu - Merci de fournir une analyse complète]`;
+        }
+      }
+
+      const veraResponse = await fetch(VERA_API_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': process.env.VERA_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: sessionId,
+          query: veraQuery
+        })
+      });
+
+      if (!veraResponse.ok) {
+        throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+      }
+
+      const chunkAnalysis = await veraResponse.text();
+      fullVeraAnalysis += chunkAnalysis;
+      await streamVeraResponse(res, chunkAnalysis);
     }
-
-    const veraAnalysis = await veraResponse.text();
-    await streamVeraResponse(res, veraAnalysis);
 
     await query(
       'INSERT INTO chat_messages (user_id, role, content, content_type) VALUES ($1, $2, $3, $4)',
-      [dbUserId, 'assistant', veraAnalysis, 'text']
+      [dbUserId, 'assistant', fullVeraAnalysis, 'text']
     );
 
-    res.write('data: [DONE]\n\n');
+    res.write('data: [DONE]\n');
     res.end();
 
   } catch (error) {
@@ -436,7 +571,7 @@ export const streamChatFile = async (req, res) => {
     if (geminiFileName) try { await fileManager.deleteFile(geminiFileName); } catch (e) {}
 
     sendSSE(res, { error: error.message || 'Erreur traitement fichier' });
-    res.write('data: [DONE]\n\n');
+    res.write('data: [DONE]\n');
     res.end();
   }
 };
@@ -453,30 +588,37 @@ export const streamChatYouTube = async (req, res) => {
   res.flushHeaders();
 
   try {
-    const { url, country, lang } = req.body;
+    const { url, country, lang, userQuestion } = req.body;
     const dbUserId = await getAnonymousUserId();
 
     if (!url) {
       sendSSE(res, { error: 'URL YouTube requise' });
-      res.write('data: [DONE]\n\n');
+      res.write('data: [DONE]\n');
       return res.end();
     }
 
     const videoId = extractYouTubeId(url);
     if (!videoId) {
       sendSSE(res, { error: 'Lien YouTube invalide' });
-      res.write('data: [DONE]\n\n');
+      res.write('data: [DONE]\n');
       return res.end();
     }
 
-    // Sauvegarde Stats (Pas de clustering sur l'URL brute, on pourrait le faire sur le transcript plus tard)
+    // Enregistrement de la question utilisateur si présente, sinon de l'URL
     try {
-        await query(
-          `INSERT INTO user_questions 
-           (question_text, normalized_text, country, language, created_at) 
-           VALUES ($1, $2, $3, $4, NOW())`,
-          [url, url.toLowerCase(), country || 'XX', lang || 'xx']
-        );
+        if (userQuestion && userQuestion.trim()) {
+          // Si une question utilisateur est présente, on la traite pour le clustering
+          await processQuestion(userQuestion.trim(), country || 'XX', lang || 'xx');
+          console.log(`Question utilisateur YouTube clustérisée: ${userQuestion.trim()}`);
+        } else {
+          // Sinon on log juste l'URL
+          await query(
+            `INSERT INTO user_questions
+             (question_text, normalized_text, country, language, created_at)
+             VALUES ($1, $2, $3, $4, NOW())`,
+            [url, url.toLowerCase(), country || 'XX', lang || 'xx']
+          );
+        }
     } catch(e) { console.error("Erreur stats youtube", e); }
 
     await query(
@@ -484,60 +626,96 @@ export const streamChatYouTube = async (req, res) => {
       [dbUserId, 'user', url, 'youtube']
     );
 
-    sendSSE(res, 'Recuperation de la transcription YouTube...\n\n');
+    sendSSE(res, 'Recuperation de la transcription YouTube...\n');
 
     let transcript;
     try {
       const transcripts = await fetchTranscript(videoId);
       transcript = transcripts.map((t) => t.text).join(' ');
     } catch (transcriptError) {
-      sendSSE(res, 'Methode principale echouee, tentative avec methode alternative...\n\n');
+      sendSSE(res, 'Methode principale echouee, tentative avec methode alternative...\n');
       try {
         transcript = fetchTranscriptWithYtDlp(videoId);
       } catch (ytdlpError) {
         sendSSE(res, { error: 'Impossible de recuperer la transcription.' });
-        res.write('data: [DONE]\n\n');
+        res.write('data: [DONE]\n');
         return res.end();
       }
     }
 
     if (!transcript || transcript.trim().length === 0) {
       sendSSE(res, { error: 'Aucune transcription disponible.' });
-      res.write('data: [DONE]\n\n');
+      res.write('data: [DONE]\n');
       return res.end();
     }
 
-    sendSSE(res, 'Analyse du contenu en cours...\n\n');
+    sendSSE(res, 'Analyse du contenu en cours...\n');
 
-    const veraQuery = `Peux-tu verifier les informations contenues dans la transcription de cette video YouTube :\n\n${transcript}`;
+    // Découper la transcription en morceaux pour respecter les limites de l'API
+    const transcriptChunks = splitTextIntoChunks(transcript);
+    const totalChunks = transcriptChunks.length;
 
-    // Ici on simplifie pour l'exemple, tu garderas ta logique de splitText si besoin
-    const veraResponse = await fetch(VERA_API_URL, {
-      method: 'POST',
-      headers: {
-        'X-API-Key': process.env.VERA_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ userId: sessionId, query: veraQuery })
-    });
+    let fullVeraAnalysis = '';
 
-    if (!veraResponse.ok) throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+    // Envoyer chaque morceau à Vera
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = transcriptChunks[i];
+      const isFirstChunk = i === 0;
+      const isLastChunk = i === totalChunks - 1;
 
-    const veraAnalysis = await veraResponse.text();
-    await streamVeraResponse(res, veraAnalysis);
+      // Indiquer la progression si plusieurs morceaux
+      if (totalChunks > 1) {
+        sendSSE(res, `\n--- Partie ${i + 1}/${totalChunks} ---\n`);
+      }
+
+      // Construction de la requête Vera
+      let veraQuery = '';
+      if (isFirstChunk) {
+        if (userQuestion && userQuestion.trim()) {
+          veraQuery = `Question utilisateur : "${userQuestion.trim()}"\nTranscription vidéo YouTube :\n${chunk}`;
+        } else {
+          veraQuery = `Peux-tu verifier les informations contenues dans la transcription de cette video YouTube :\n${chunk}`;
+        }
+        if (totalChunks > 1) {
+          veraQuery += `\n[Suite de la transcription à venir - Partie 1/${totalChunks}]`;
+        }
+      } else {
+        veraQuery = `Suite de la transcription YouTube (Partie ${i + 1}/${totalChunks}) :\n${chunk}`;
+        if (!isLastChunk) {
+          veraQuery += `\n[Suite à venir]`;
+        } else {
+          veraQuery += `\n[Fin de la transcription - Merci de fournir une analyse complète]`;
+        }
+      }
+
+      const veraResponse = await fetch(VERA_API_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': process.env.VERA_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ userId: sessionId, query: veraQuery })
+      });
+
+      if (!veraResponse.ok) throw new Error(`Erreur API Vera: ${veraResponse.status}`);
+
+      const chunkAnalysis = await veraResponse.text();
+      fullVeraAnalysis += chunkAnalysis;
+      await streamVeraResponse(res, chunkAnalysis);
+    }
 
     await query(
       'INSERT INTO chat_messages (user_id, role, content, content_type) VALUES ($1, $2, $3, $4)',
-      [dbUserId, 'assistant', veraAnalysis, 'text']
+      [dbUserId, 'assistant', fullVeraAnalysis, 'text']
     );
 
-    res.write('data: [DONE]\n\n');
+    res.write('data: [DONE]\n');
     res.end();
 
   } catch (error) {
     console.error('Erreur chat stream YouTube:', error);
     sendSSE(res, { error: error.message });
-    res.write('data: [DONE]\n\n');
+    res.write('data: [DONE]\n');
     res.end();
   }
 };
