@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { query } from '../db/config.js';
 import { generateToken } from '../middlewares/auth.js';
+import { sendInvitationEmail } from '../services/emailService.js';
 
 // ==========================================
 // 1. SETUP ADMIN (Sécurité Amina ✅)
@@ -101,18 +102,30 @@ export const inviteModo = async (req, res) => {
     if (!email) return res.status(422).json({ message: "Email requis" });
 
     const check = await query('SELECT * FROM users WHERE email = $1', [email]);
-    if (check.rows.length > 0) return res.status(409).json({ message: "Déjà membre" });
+    if (check.rows.length > 0) return res.status(409).json({ message: "Deja membre" });
 
     const invitationToken = crypto.randomBytes(32).toString('hex');
 
     await query(
-      `INSERT INTO users (email, first_name, role, invitation_token) 
+      `INSERT INTO users (email, first_name, role, invitation_token)
        VALUES ($1, $2, 'modo', $3)`,
       [email, firstName, invitationToken]
     );
 
-    console.log(`📧 LIEN INVITE : http://localhost:4200/accept-invite?token=${invitationToken}`);
-    res.status(201).json({ message: "Invitation envoyée (voir console)" });
+    // Envoyer l'email d'invitation
+    try {
+      await sendInvitationEmail(email, firstName, invitationToken);
+      res.status(201).json({ message: "Invitation envoyee par email" });
+    } catch (emailError) {
+      // Si l'email echoue, on log quand meme le lien en console (fallback dev)
+      console.warn('Email non envoye, fallback console:', emailError.message);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:4200';
+      console.log(`LIEN INVITE : ${frontendUrl}/accept-invite?token=${invitationToken}`);
+      res.status(201).json({
+        message: "Invitation creee (email non envoye - voir console)",
+        warning: "Configuration SMTP manquante"
+      });
+    }
   } catch (error) {
     console.error("Erreur invitation:", error);
     res.status(500).json({ message: "Erreur invitation" });
