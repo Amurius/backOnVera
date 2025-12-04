@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
+import sanitizeHtml from 'sanitize-html';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -224,7 +225,7 @@ export const streamChat = async (req, res) => {
       res.write('data: [DONE]\n');
       return res.end();
     }
-
+    
     // =========================================================
     // 👇 CORRECTION MAJEURE ICI 👇
     // =========================================================
@@ -233,16 +234,22 @@ export const streamChat = async (req, res) => {
     
     // On lance le traitement en arrière-plan ("Fire and forget")
     // On passe bien country et lang pour qu'ils soient enregistrés avec le cluster
-    processQuestion(textToProcess, country || 'XX', lang || 'xx')
+    
+    const contenuNettoye = sanitizeHtml(textToProcess, {
+      allowedTags: ['b', 'i', 'em', 'strong', 'a'],
+      allowedAttributes: { a: ['href'] },
+    });
+    
+    processQuestion(contenuNettoye, country || 'XX', lang || 'xx')
       .then(() => console.log('✅ Question traitée (Clustering + DB)'))
       .catch(err => console.error('⚠️ Erreur traitement question:', err.message));
 
     // =========================================================
-
+    const contenuSlice = contenuNettoye.trim().slice(0,3000)
     // 2. Sauvegarder le message utilisateur (Historique Chat)
     await query(
       'INSERT INTO chat_messages (user_id, role, content, content_type) VALUES ($1, $2, $3, $4)',
-      [dbUserId, 'user', textToProcess, 'text']
+      [dbUserId, 'user', contenuSlice, 'text']
     );
 
     // 3. Appel API Vera
@@ -254,7 +261,7 @@ export const streamChat = async (req, res) => {
       },
       body: JSON.stringify({
         userId: sessionId,
-        query: textToProcess
+        query: contenuNettoye
       })
     });
 
