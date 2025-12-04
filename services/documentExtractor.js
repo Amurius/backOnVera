@@ -5,7 +5,9 @@
 
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
-import { PDFParse } from 'pdf-parse';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { PDFParse } = require('pdf-parse');
 
 // Types MIME supportés
 export const SUPPORTED_DOCUMENT_TYPES = {

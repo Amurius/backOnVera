@@ -488,6 +488,10 @@ Cliquez sur le trombone 📎 > Vidéo > Sélectionnez (Max 20MB).
 
   async startPolling() {
     try {
+      if (process.env.NODE_ENV == "developpement"){
+        console.log("C'est du developpement")
+      } else {
+
       await this.bot.telegram.deleteWebhook();
       
       // Initialisation du menu de commandes au démarrage
@@ -496,6 +500,7 @@ Cliquez sur le trombone 📎 > Vidéo > Sélectionnez (Max 20MB).
       this.bot.launch();
       this.isRunning = true;
       console.log('✅ Bot Telegram connecté en Polling avec Menu !');
+      }
     } catch (error) {
       console.error('❌ Erreur startPolling:', error);
     }
