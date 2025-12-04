@@ -5,9 +5,6 @@
 
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { PDFParse } = require('pdf-parse');
 
 // Types MIME supportés
 export const SUPPORTED_DOCUMENT_TYPES = {
@@ -33,6 +30,10 @@ export const isDocumentType = (mimeType) => {
  * @returns {Promise<string>} - Texte extrait
  */
 const extractFromPdf = async (buffer) => {
+  // Import dynamique pour eviter le crash au demarrage sur les environnements serverless
+  const { createRequire } = await import('module');
+  const require = createRequire(import.meta.url);
+  const { PDFParse } = require('pdf-parse');
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
   return result.text || '';
