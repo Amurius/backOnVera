@@ -31,12 +31,16 @@ COPY . .
 # Final stage for app image
 FROM base
 
-# Install packages needed for deployment
+# Install packages needed for deployment (Python 3.11 for yt-dlp compatibility)
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y ffmpeg python3 curl ca-certificates && \
+    apt-get install --no-install-recommends -y ffmpeg curl ca-certificates software-properties-common && \
+    echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/bookworm.list && \
+    apt-get update -qq && \
+    apt-get install --no-install-recommends -y python3.11 && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives /etc/apt/sources.list.d/bookworm.list
 
 # Copy built application
 COPY --from=build /app /app
