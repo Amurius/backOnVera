@@ -113,18 +113,35 @@ const fetchTranscriptWithYtDlp = (videoId) => {
   const tempDir = os.tmpdir();
   const outputPath = path.join(tempDir, `yt-${videoId}`);
 
+  console.log(`[yt-dlp] Tentative pour videoId: ${videoId}`);
+  console.log(`[yt-dlp] Temp dir: ${tempDir}, Output path: ${outputPath}`);
+
+  // Verifier si yt-dlp est installe
   try {
-    execSync(
-      `yt-dlp --skip-download --write-auto-sub --write-sub --sub-lang fr,en --sub-format vtt -o "${outputPath}" "https://www.youtube.com/watch?v=${videoId}"`,
-      { stdio: 'pipe', timeout: 60000 }
-    );
+    const ytdlpVersion = execSync('yt-dlp --version', { stdio: 'pipe', timeout: 5000 }).toString().trim();
+    console.log(`[yt-dlp] Version installee: ${ytdlpVersion}`);
+  } catch (versionError) {
+    console.error(`[yt-dlp] ERREUR: yt-dlp n'est pas installe ou accessible`);
+    console.error(`[yt-dlp] Erreur version:`, versionError.message);
+    throw new Error('yt-dlp non disponible sur ce serveur');
+  }
+
+  try {
+    const command = `yt-dlp --skip-download --write-auto-sub --write-sub --sub-lang fr,en --sub-format vtt -o "${outputPath}" "https://www.youtube.com/watch?v=${videoId}"`;
+    console.log(`[yt-dlp] Commande: ${command}`);
+
+    const result = execSync(command, { stdio: 'pipe', timeout: 60000 });
+    console.log(`[yt-dlp] Commande executee avec succes`);
 
     const files = fs.readdirSync(tempDir);
     const subtitleFile = files.find(f => f.startsWith(`yt-${videoId}`) && (f.endsWith('.vtt') || f.endsWith('.srt')));
+    console.log(`[yt-dlp] Fichiers dans tempDir:`, files.filter(f => f.startsWith('yt-')));
 
     if (!subtitleFile) {
+      console.error(`[yt-dlp] Aucun fichier de sous-titres trouve pour ${videoId}`);
       throw new Error('Aucun fichier de sous-titres trouve');
     }
+    console.log(`[yt-dlp] Fichier trouve: ${subtitleFile}`);
 
     const subtitlePath = path.join(tempDir, subtitleFile);
     const content = fs.readFileSync(subtitlePath, 'utf-8');
@@ -145,8 +162,17 @@ const fetchTranscriptWithYtDlp = (videoId) => {
       .filter(line => line.length > 0)
       .join(' ');
 
+    console.log(`[yt-dlp] Transcription extraite: ${cleanText.length} caracteres`);
     return cleanText;
   } catch (error) {
+    console.error(`[yt-dlp] ERREUR lors de l'extraction:`, error.message);
+    if (error.stderr) {
+      console.error(`[yt-dlp] stderr:`, error.stderr.toString());
+    }
+    if (error.stdout) {
+      console.log(`[yt-dlp] stdout:`, error.stdout.toString());
+    }
+
     try {
       const files = fs.readdirSync(tempDir);
       files.filter(f => f.startsWith(`yt-${videoId}`)).forEach(f => {
@@ -630,14 +656,19 @@ export const streamChatYouTube = async (req, res) => {
 
     let transcript;
     try {
+      console.log(`[youtube-transcript-plus] Tentative pour videoId: ${videoId}`);
       const transcripts = await fetchTranscript(videoId);
       transcript = transcripts.map((t) => t.text).join(' ');
+      console.log(`[youtube-transcript-plus] Succes! ${transcript.length} caracteres`);
     } catch (transcriptError) {
+      console.error(`[youtube-transcript-plus] ERREUR:`, transcriptError.message);
+      console.error(`[youtube-transcript-plus] Stack:`, transcriptError.stack);
       sendSSE(res, 'Methode principale echouee, tentative avec methode alternative...\n');
       try {
         transcript = fetchTranscriptWithYtDlp(videoId);
       } catch (ytdlpError) {
-        sendSSE(res, { error: 'Impossible de recuperer la transcription.' });
+        console.error(`[yt-dlp fallback] ERREUR FINALE:`, ytdlpError.message);
+        sendSSE(res, { error: `Impossible de recuperer la transcription. Erreur: ${ytdlpError.message}` });
         res.write('data: [DONE]\n');
         return res.end();
       }
