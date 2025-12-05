@@ -5,46 +5,7 @@ import { generateToken } from '../middlewares/auth.js';
 import { sendInvitationEmail } from '../services/emailService.js';
 
 // ==========================================
-// 1. SETUP ADMIN (Sécurité Amina ✅)
-// ==========================================
-export const register = async (req, res) => {
-  try {
-    const { email, password, firstName, lastName, adminSecret } = req.body;
-
-    if (adminSecret !== process.env.ADMIN_SECRET) {
-      return res.status(403).json({ message: "Action non autorisée. Inscription publique fermée." });
-    }
-
-    if (!email || !password) {
-      return res.status(422).json({ message: 'Email et mot de passe requis' });
-    }
-
-    const existingUser = await query('SELECT * FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
-      return res.status(409).json({ message: 'Cet email est déjà utilisé' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const result = await query(
-      `INSERT INTO users (email, password, first_name, last_name, role) 
-       VALUES ($1, $2, $3, $4, 'admin') 
-       RETURNING id, email, first_name, last_name, role, created_at`,
-      [email, hashedPassword, firstName || null, lastName || null]
-    );
-
-    const user = result.rows[0];
-    const token = generateToken(user.id, user.email, user.role);
-
-    res.status(201).json({ message: '👑 Admin créé', user, token });
-  } catch (error) {
-    console.error('Erreur inscription:', error);
-    res.status(500).json({ message: "Erreur lors de l'inscription" });
-  }
-};
-
-// ==========================================
-// 2. LOGIN (Sécurité Amina ✅)
+// 1. LOGIN (Sécurité Amina ✅)
 // ==========================================
 export const login = async (req, res) => {
   try {
@@ -94,7 +55,7 @@ export const login = async (req, res) => {
 };
 
 // ==========================================
-// 3. GESTION INVITATIONS (Sécurité Amina ✅)
+// 2. GESTION INVITATIONS (Sécurité Amina ✅)
 // ==========================================
 export const inviteModo = async (req, res) => {
   try {
@@ -156,7 +117,7 @@ export const acceptInvitation = async (req, res) => {
 };
 
 // ==========================================
-// 4. GESTION PROFIL (Fusion Artus + Amina 🤝)
+// 3. GESTION PROFIL (Fusion Artus + Amina 🤝)
 // ==========================================
 export const getProfile = async (req, res) => {
   try {
