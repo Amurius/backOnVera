@@ -1,7 +1,6 @@
 import express from 'express';
 // 1. On importe TOUTES les fonctions (Amina + Artus)
 import { 
-  register, 
   login, 
   getProfile, 
   inviteModo, 
@@ -19,9 +18,6 @@ const router = express.Router();
 // ==========================================
 // 🔓 ROUTES PUBLIQUES
 // ==========================================
-
-// Setup Admin (Protégé par code secret)
-router.post('/register', register);
 
 // Connexion
 router.post('/login', login);
